@@ -119,14 +119,19 @@ The layer steers the output of the VLA policy by adding two terms to its base ve
 ![Algorithm 1: safety layer on top of a frozen flow policy. Black = the policy's own sampler, grey = comments, red = the safety layer, purple = the optional CAR correction term](docs/algorithm1.png)
 
 
-Notes: pi0.5 uses N = 10, H = 10, K = 5; GR00T N1.7 uses N = 4, H = 16,
-K = 8; λ = 1. Line 6 is the pi0.5 flow convention (t: 1 → 0); GR00T's â = x + (1 − t)·v is handled by its adapter,
-the rest is identical.
+Notes: pi0.5 uses N = 10, H = 10, K = 5; GR00T N1.7 uses N = 4, H = 16, K = 8; λ = 1. Line 6 is the pi0.5 flow
+convention (t: 1 → 0); GR00T's â = x + (1 − t)·v is handled by its adapter, the rest is identical.
+
+In the code, lines 3–11 are `Guide.sample` (`safeguide/core/guide.py`) and lines 2 and 12 are the `Supervisor`
+(`safeguide/core/supervisor.py`). A policy is plugged in through a `FlowPolicyAdapter` (`safeguide/adapters/base.py`)
+that provides `prepare`, `velocity`, `sample_noise`, the flow time convention, the action map, and `install`, which
+routes the policy's own inference call through Algorithm 1. Two adapters ship with the package; the templates in
+`examples/` show how to write one for another policy.
 
 
 ### Example A — pi0.5 (openpi, PyTorch) + guidance
 
-Python:
+Python (the policy's own `infer` call becomes the guided one):
 
 ```python
 import safeguide as sg
@@ -137,14 +142,14 @@ for episode in episodes:
     layer.reset_episode(gate_line)                       # (c_xy, d_xy, offset) or None
     while not done:
         if not plan:
-            layer.before_chunk(gripper_closed)           # Algorithm 1, line 1
-            chunk = policy.infer(obs)["actions"]         # the policy's own call, now guided (lines 2-10)
-            layer.after_chunk()                          # line 11
+            layer.before_chunk(gripper_closed)           # Algorithm 1, line 2
+            chunk = policy.infer(obs)["actions"]         # the policy's own call, now guided (lines 1, 3-11)
+            layer.after_chunk()                          # line 12
             plan.extend(chunk[:5])
         env.step(plan.popleft())
 ```
 
-Command line (LIBERO, two pillars forming a gate; the configuration used in Step 3):
+Command line (LIBERO, two pillars forming a gate; the configuration used in the Results):
 
 ```bash
 python benchmarks/eval_obstacle.py --suite libero_spatial --layout gate --gate_half_gap 0.17 --clean_gate 0.075 \
@@ -162,8 +167,9 @@ python benchmarks/eval_obstacle.py --suite libero_spatial --extra_steps 100 --la
     --calib runs/baseline/libero_spatial/action_model_calibration.npz --out runs/pi05_hand
 ```
 
-`--guidance none` gives the frozen-policy reference. The obstacle-free baselines the placements and the gain `G`
-are derived from come from `benchmarks/eval_libero.py` and `benchmarks/calibrate_action_model.py`.
+`--guidance none` gives the frozen-policy reference. Both commands need obstacle-free baseline rollouts first
+(`benchmarks/eval_libero.py`): the obstacles are placed relative to those paths and the action gain `G` is fitted on
+them (`benchmarks/calibrate_action_model.py`).
 
 ### Example B — GR00T N1.7 + guidance
 
@@ -177,7 +183,7 @@ over zmq (`safeguide/remote.py`, `safeguide/server/groot_server.py`):
 PYTHONPATH=<repo> python safeguide/server/groot_server.py \
     --model-path checkpoints/GR00T-N1.7-LIBERO/libero_spatial --port 5561 --guidance g1
 
-# evaluator environment: obstacle-free baselines once, then the same benchmark command with --policy groot
+# evaluator environment: obstacle-free baselines once, then the same benchmark command with --policy groot (GR00T executes 8 of 16 steps)
 python benchmarks/eval_libero.py --policy groot --groot_port 5561 --suite libero_spatial --replan_steps 8 --out runs/baseline_groot
 python benchmarks/eval_obstacle.py --policy groot --groot_port 5561 --replan_steps 8 --baseline_dir runs/baseline_groot \
     --suite libero_spatial --layout gate --gate_half_gap 0.17 --clean_gate 0.075 \
