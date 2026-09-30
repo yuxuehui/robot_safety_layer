@@ -1,32 +1,43 @@
-% Algorithm 1 of the README / paper. Build: pdflatex algorithm1.tex  (standalone), or paste the algorithmic block into a paper.
-% Colour code:  black = the frozen policy's own sampler,  red = the safety layer (this package),  blue = the runtime constraint.
-\documentclass[border=6pt,varwidth=15cm]{standalone}
+% Algorithm 1, identical to the "Step 2" slide of the September 2026 deck.
+% Colour code (as on the slide): black = the frozen policy's own sampler, grey = comments,
+% red = the safety layer (this package), purple = the optional learned correction term (CAR).
+\documentclass[border=6pt,varwidth=16.5cm]{standalone}
 \usepackage{amsmath,amssymb}
-\usepackage[dvipsnames]{xcolor}
+\usepackage{xcolor}
 \usepackage[noend]{algpseudocode}
 \definecolor{layer}{HTML}{C00000}
-\definecolor{constraint}{HTML}{1F5FBF}
+\definecolor{car}{HTML}{7030A0}
+\definecolor{note}{HTML}{505050}
 \newcommand{\SL}[1]{{\color{layer}#1}}
-\newcommand{\CS}[1]{{\color{constraint}#1}}
-\newcommand{\ahat}{\hat{\mathbf a}}
+\newcommand{\CAR}[1]{{\color{car}#1}}
+\newcommand{\NOTE}[1]{{\color{note}#1}}
+\algrenewcommand{\algorithmiccomment}[1]{\hfill$\triangleright$ #1}
+\algrenewcommand\algorithmicif{\textcolor{layer}{\textbf{if}}}
+\algrenewcommand\algorithmicthen{\textcolor{layer}{\textbf{then}}}
 \begin{document}
-\begin{minipage}{15cm}
-\noindent\textbf{Algorithm 1} Guided sampling of one action chunk (\SL{safety layer} on a frozen flow policy)\par\vspace{2pt}\hrule\vspace{4pt}
+\begin{minipage}{16.5cm}
+\noindent\textbf{Algorithm 1} \; Safety layer on top of a frozen flow policy (one action chunk)\par
+\vspace{2pt}\hrule\vspace{4pt}
+\noindent\textbf{Input:} observation $o_t$; frozen flow policy $\pi$ with velocity field $v_\theta$;
+runtime safety constraints, given as a cost function $J(\hat{a};\,\mathrm{ctx})$ on the predicted action chunk,
+with $\mathrm{ctx}$ the constraint context of the coming chunk; weight $\lambda$; $N$ Euler steps; chunk length $H$; executed steps $K$\par
+\noindent\textbf{Output:} safe action chunk $a_{1:K}$\par
+\vspace{2pt}
 \begin{algorithmic}[1]
-\Require observation $o$; frozen velocity field $v_\theta$ with $N$ Euler steps; \CS{constraint cost $J$ (Step~1)}; action map $A$; push scale $\lambda$, reference violation $v_{\mathrm{ref}}$; executed prefix $K$
-\State \SL{$\mathrm{ctx} \gets \textsc{Supervisor.before\_chunk}(\text{robot}, \text{scene})$} \Comment{\SL{obstacles, sphere model, clearance $c_0$ measured now}}
-\State $\mathrm{cond} \gets \textsc{prepare}(o)$ \Comment{prefix / KV cache, once per chunk}
-\State $\mathbf x \gets \boldsymbol\epsilon \sim \mathcal N(0, I)$
-\For{each Euler step $t$ of the policy's schedule ($N$ steps)}
-    \State $\mathbf v \gets v_\theta(\mathrm{cond}, \mathbf x, t)$ \Comment{one velocity-field call, no gradient}
-    \State \SL{$\ahat \gets \mathbf x - t\,\mathbf v$} \Comment{\SL{clean-chunk estimate (rectified flow)}}
-    \State \SL{$J, \, \mathrm{viol} \gets$} \CS{$J(\ahat; \mathrm{ctx})$} \Comment{\CS{Step 1: cost and violation in metres}}
-    \State \SL{$\hat{\mathbf g} \gets \mathrm{normalise}\!\left(\partial J / \partial \ahat\right)$} \Comment{\SL{unit-RMS gradient}}
-    \State \SL{$\mathbf v \gets \mathbf v + \lambda \cdot \min\!\left(1, \mathrm{viol} / v_{\mathrm{ref}}\right) \hat{\mathbf g}$} \Comment{\SL{$+\,A(\text{escape offset})$ if the supervisor asked for one}}
-    \State $\mathbf x \gets \mathbf x + \Delta t \, \mathbf v$
+\State $\mathrm{cond} \gets \pi.\mathrm{prepare}(o_t)$ \Comment{\NOTE{vision-language conditioning, once per chunk}}
+\State \SL{$\mathrm{ctx} \gets \mathrm{Supervisor.before\_chunk}()$} \Comment{\SL{get the robot and the obstacles context}}
+\State $x \gets \varepsilon \sim \mathcal N(0, I)$ \Comment{\NOTE{noise, the policy's own sampler}}
+\For{$i = 0, \ldots, N-1$} \Comment{\NOTE{the policy's Euler integration}}
+    \State $t \gets t_i$; \; $v \gets v_\theta(\mathrm{cond}, x, t)$
+    \State $\hat{a} \gets x - t \cdot v$ \Comment{\NOTE{predicted clean chunk (rectified flow)}}
+    \State \SL{$J \gets J(\hat{a};\,\mathrm{ctx})$} \Comment{\SL{cost of the predicted chunk}}
+    \If{\SL{$J > 0$}}
+        \State \SL{$\hat{g} \gets \mathrm{normalise}\!\left(\partial J / \partial \hat{a}\right)$}
+        \State \SL{$v \gets v + \lambda \cdot \hat{g}$} \CAR{$+\; \mathrm{gate}(\mathrm{ctx}) \cdot \mathrm{CAR}(u)$} \Comment{\SL{steer the flow;} \CAR{off-manifold correction CAR($u$)}}
+    \EndIf
+    \State $x \gets x + \Delta t \cdot v$
 \EndFor
-\State \SL{$\textsc{Supervisor.after\_chunk}(\log)$} \Comment{\SL{release / deadlock bookkeeping}}
-\State \Return the first $K$ actions of $\mathbf x$; replan
+\State $a_{1:H} \gets \mathrm{unnormalize}(x)$; \; execute $a_{1:K}$; \; \SL{$\mathrm{Supervisor.after\_chunk}()$}
 \end{algorithmic}
 \vspace{2pt}\hrule
 \end{minipage}

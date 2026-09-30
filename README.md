@@ -121,18 +121,22 @@ carries the margins, `d_safe`, `cbf_vref` and the executed-prefix length; `T` th
 ## Step 2 — Incorporating the safety layer into a flow policy
 
 The policy's sampler integrates a velocity field `v_θ(x_t, t | obs)` from noise to the action chunk. The layer
-wraps that loop (Algorithm 1). Notation: `t` runs in the policy's own convention (`FlowSpec`: 1→0 for openpi, 0→1
-for GR00T), `A` = action map, `λ` = push scale (1.0), `v_ref` = 1 cm.
+wraps that loop (Algorithm 1). `t` runs in the policy's own convention (`FlowSpec`: 1→0 for openpi, 0→1 for GR00T);
+`λ` is the push scale (1.0); `normalise` rescales the gradient to unit RMS and multiplies it by `min(1, violation / v_ref)`
+with `v_ref` = 1 cm (minimal intervention: a 1 mm violation gets a 10x smaller push than a 1 cm one).
 
-![Algorithm 1: guided sampling of one action chunk. Black = the policy's own sampler, red = the safety layer, blue = the runtime constraint](docs/algorithm1.png)
+![Algorithm 1: safety layer on top of a frozen flow policy. Black = the policy's own sampler, grey = comments, red = the safety layer, purple = the optional CAR correction term](docs/algorithm1.png)
 
-LaTeX source with the same colour code: [`docs/algorithm1.tex`](docs/algorithm1.tex) (black = the frozen policy's own
-sampler, red = the safety layer, blue = the constraint of Step 1).
+LaTeX source with the same colour code: [`docs/algorithm1.tex`](docs/algorithm1.tex). Red lines are the safety layer
+(this package); the purple term in line 10 is the optional learned correction (CAR), which is off (`gate(ctx) = 0`) in
+every configuration used in this README. Notes: pi0.5 uses N = 10, H = 10, K = 5; GR00T N1.7 uses N = 4, H = 16,
+K = 8; λ = 1. Line 6 is the pi0.5 flow convention (t: 1 → 0); GR00T's â = x + (1 − t)·v is handled by its adapter,
+the rest is identical.
 
-Lines 5–10 are `Guide.sample` (`safeguide/core/guide.py`); lines 1 and 11 are the `Supervisor`
-(`safeguide/core/supervisor.py`). A model is plugged in through a `FlowPolicyAdapter` (`safeguide/adapters/base.py`):
-`prepare`, `velocity`, `sample_noise`, `flow` (time convention), `action_map`, and `install` (how the policy's own
-sampler is replaced). Two adapters exist.
+Lines 5–11 are `Guide.sample` (`safeguide/core/guide.py`); line 2 and the `after_chunk` call in line 12 are the
+`Supervisor` (`safeguide/core/supervisor.py`). A model is plugged in through a `FlowPolicyAdapter`
+(`safeguide/adapters/base.py`): `prepare`, `velocity`, `sample_noise`, `flow` (time convention), `action_map`, and
+`install` (how the policy's own sampler is replaced). Two adapters exist.
 
 ### Example A — pi0.5 (openpi, PyTorch) + guidance
 
