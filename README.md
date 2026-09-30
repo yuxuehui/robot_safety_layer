@@ -229,13 +229,13 @@ with the obstacle; *violation* = any contact; the remainder did not complete the
 
 **GR00T N1.7** (4 Euler steps, replan every 8 steps, same constraints and margins, no re-tuning)
 
-| Constraint / layout | n | frozen GR00T (safe / violation) | + safety layer (safe / violation) |
-|---|---|---|---|
-| Static: gate ±17 cm | 210 | 58.1 % / 41.4 % | **64.3 % / 15.2 %** |
-| Static: gate ±20 cm | 258 | 66.7 % / 30.6 % | **73.3 % / 14.3 %** |
-| Static: one pillar | 402 | 0.0 % / 99.5 % | **7.5 % / 11.4 %**|
-| Dynamic: hand sweeping | 586 | 4.3 % / 95.2 % | **15.2 % / 19.1 %** |
-| Dynamic: hand reaching | 583 | 2.2 % / 97.4 % | **16.6 % / 4.3 %** |
+| Constraint / layout | n | frozen GR00T (safe / violation) | + safety layer (safe / violation) | latency per call |
+|---|---|---|---|---|
+| Static: gate ±17 cm | 210 | 58.1 % / 41.4 % | **64.3 % / 15.2 %** | 0.14 → 0.15 s |
+| Static: gate ±20 cm | 258 | 66.7 % / 30.6 % | **73.3 % / 14.3 %** | 0.15 → 0.16 s |
+| Static: one pillar | 402 | 0.0 % / 99.5 % | **7.5 % / 11.4 %** | 0.19 → 0.24 s |
+| Dynamic: hand sweeping | 586 | 4.3 % / 95.2 % | **15.2 % / 19.1 %** | 0.18 → 0.38 s |
+| Dynamic: hand reaching | 583 | 2.2 % / 97.4 % | **16.6 % / 4.3 %** | 0.15 → 0.41 s |
 
 
 Violations drop 3–25x under every constraint and for both policies. The residual failures are stalls: after the
