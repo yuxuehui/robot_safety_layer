@@ -112,19 +112,13 @@ The layer steers the output of the VLA policy by adding two terms to its base ve
   `v ← v + λ · ĝ`, with `ĝ = normalise(∂J/∂â)`. Always on; this is the safety layer.
 * $\textcolor{#7030A0}{\text{optionally, an off-manifold correction term } \mathrm{CAR}(u)}$ (**purple** in Algorithm 1):
   `v ← v + gate(ctx) · CAR(u)`, because naively editing the action can push it off the action manifold. `u` is a
-  correction vector learned online within the episode and `gate(ctx)` opens only when the supervisor detects a
-  deadlock. **Off by default** (`gate(ctx) = 0` in every command of this README). Switch it on with
-  `--recovery 1` on the command line, or in Python with
-  `sg.Guide(adapter, cfg, recovery=sg.core.recovery.RecoveryConfig())` and `SupervisorConfig(recovery=True)`;
-  the original CAR variant of the legacy sampler is `--guidance car --car_param vector` (`benchmarks/guidance.py`).
+  learnable correction vector and `gate(ctx)` opens only when the supervisor detects conflict. **Off by default** (`gate(ctx) = 0` in every command of this README). Switch it on with
+  `--recovery 1` on the command line. Suggest to switch it off.
 
 ![Algorithm 1: safety layer on top of a frozen flow policy. Black = the policy's own sampler, grey = comments, red = the safety layer, purple = the optional CAR correction term](docs/algorithm1.png)
 
 
-
-LaTeX source with the same colour code: [`docs/algorithm1.tex`](docs/algorithm1.tex). Red lines are the safety layer
-(this package); the purple term in line 10 is the optional learned correction (CAR), which is off (`gate(ctx) = 0`) in
-every configuration used in this README. Notes: pi0.5 uses N = 10, H = 10, K = 5; GR00T N1.7 uses N = 4, H = 16,
+Notes: pi0.5 uses N = 10, H = 10, K = 5; GR00T N1.7 uses N = 4, H = 16,
 K = 8; λ = 1. Line 6 is the pi0.5 flow convention (t: 1 → 0); GR00T's â = x + (1 − t)·v is handled by its adapter,
 the rest is identical.
 
