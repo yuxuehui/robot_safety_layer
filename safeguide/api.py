@@ -15,9 +15,12 @@ from .core.supervisor import Supervisor, SupervisorConfig
 
 
 class SafeGuide:
-    def __init__(self, adapter, robot, scene, guide_cfg: GuideConfig | None = None, sup_cfg: SupervisorConfig | None = None):
+    def __init__(self, adapter, robot, scene, guide_cfg: GuideConfig | None = None, sup_cfg: SupervisorConfig | None = None,
+                 cost_fn=None):
+        """cost_fn: optional user-defined constraint cost_fn(a_hat, ctx, T) -> (J (B,), violation (B,) in metres);
+        None = the built-in obstacle cost of `scene` (cylinders + capsules)."""
         self.adapter = adapter
-        self.guide = Guide(adapter, guide_cfg or GuideConfig.sota())
+        self.guide = Guide(adapter, guide_cfg or GuideConfig.sota(), cost_fn=cost_fn)
         self.sup = Supervisor(robot, scene, adapter.action_map(), sup_cfg or SupervisorConfig(),
                               horizon=adapter.action_horizon)
 

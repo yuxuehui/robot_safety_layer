@@ -117,10 +117,13 @@ def supervisor_config(tasks, exec_steps=5, margins: RobotMargins | None = None):
         escape_len=st.escape_len if st else 2)
 
 
-def compose(adapter, robot, *tasks, exec_steps=5, margins: RobotMargins | None = None, guide_cfg: GuideConfig | None = None):
+def compose(adapter, robot, *tasks, exec_steps=5, margins: RobotMargins | None = None, guide_cfg: GuideConfig | None = None,
+            cost_fn=None):
     """Guided policy for one or both tasks:  compose(adapter, robot, StaticObstacleTask(scene)).install()
                                             compose(adapter, robot, DynamicObstacleTask.tight()).install()
-                                            compose(adapter, robot, static_task, dynamic_task).install()"""
+                                            compose(adapter, robot, static_task, dynamic_task).install()
+    cost_fn: optional user-defined constraint replacing the built-in cost (see README, "define your own")."""
     scenes = [t.scene for t in tasks]
     scene = scenes[0] if len(scenes) == 1 else CompositeScene(*scenes)
-    return SafeGuide(adapter, robot, scene, guide_cfg or GuideConfig.sota(), supervisor_config(tasks, exec_steps, margins))
+    return SafeGuide(adapter, robot, scene, guide_cfg or GuideConfig.sota(), supervisor_config(tasks, exec_steps, margins),
+                     cost_fn=cost_fn)

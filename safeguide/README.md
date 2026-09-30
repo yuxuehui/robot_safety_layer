@@ -1,25 +1,62 @@
-# safeguide — a plug-in safety layer for flow-matching VLA policies
+# safeguide — the safety layer (package)
 
 ```
                  ┌──────────────────────────────────────────────────────────────┐
    Obs. ───────► │  Generative policy (flow matching)  ──►  Safety Layer  ──►  │ ──► safe action chunk
                  │        pi0.5 / GR00T N1.7  (frozen)        core/guide.py    │
                  └──────────────────────────────▲───────────────────────────────┘
-                                                │  runtime safety constraints = inference-time tasks
-                             StaticObstacleTask (pillars, fixtures)   DynamicObstacleTask (human arm)
-                             cylinders  → J_s                          tracked + predicted capsules → J_d
+                                                │  runtime safety constraints = cost functions J
+                             StaticObstacleTask (pillars, fixtures)   DynamicObstacleTask (human arm)   your cost_fn
 ```
 
-A plug-in safety layer for frozen flow-matching / diffusion action policies (pi0.5 today, GR00T N1.x next).
-At every Euler step of the policy's own action sampler it estimates the clean action chunk, evaluates a
-world-frame collision cost on a sphere model of the robot (plus the object it carries) against static cylinders
-and moving capsules (a human arm), and pushes the velocity field downhill in that cost. No gradient through the
-policy network, no retraining, ~30-50 ms per policy call on top of the policy itself.
+At every Euler step of the policy's own action sampler the layer estimates the clean action chunk, evaluates a
+world-frame constraint cost on a sphere model of the robot (plus the object it carries) and pushes the velocity
+field downhill in that cost. No gradient through the policy network, no retraining, ~30-50 ms per policy call on
+pi0.5 and ~10 ms on GR00T N1.7 on top of the policy itself.
 
-The configuration evaluated as **"inference-time guidance"** in the September 2026 deck is
-`GuideConfig.sota()` + `SupervisorConfig.pillar_sota()` (static obstacles) / `SupervisorConfig.hand_sota()` (moving hand):
-CBF barrier cost anchored at the measured chunk-start clearance, held-object spheres, Jacobian arm-motion model,
-post-gate arm-margin release and deadlock escape, replanning every 5 control steps.
+## Where things live, and what to touch when porting
+
+| You want to ... | Implement / edit | Reference |
+|---|---|---|
+| run a **new policy** (another flow / diffusion VLA) | a `FlowPolicyAdapter` (`adapters/base.py`): flow time convention, one velocity call, noise, conditioning, action map, how the sampler is replaced | `adapters/pi05_openpi.py`, `adapters/groot_n1.py`, `examples/adapter_template.py` |
+| run on a **new simulator or a real robot** | a `RobotModel` (`robot/base.py`): end-effector point, collision spheres from FK, per-sphere motion model, held object; re-calibrate the action gain `G` | `robot/mujoco_panda.py`, `examples/robot_template.py`, `benchmarks/calibrate_action_model.py` |
+| feed obstacles from **sim ground truth or perception** | a `Scene` (`scene/base.py`): static cylinders and/or moving capsules with predicted poses | `scene/base.py`, `scene/human_arm.py`, `examples/scene_template.py` |
+| add a **new runtime constraint** | `cost_fn(a_hat, ctx, T) -> (J, violation)` passed to `SafeGuide` / `compose`, or a new task in `tasks.py` | `tasks.py`, `examples/custom_cost.py` |
+| change **how hard the layer pushes** | `GuideConfig` (`core/guide.py`): `scale`, `t_min`, `schedule` | `GuideConfig.sota()` |
+| change **margins, release, escape, replan interval** | `SupervisorConfig` (`core/supervisor.py`) | `pillar_sota()`, `hand_sota()` |
+| wire it into a **control loop** | `SafeGuide` / `compose` (`api.py`, `tasks.py`) | `examples/control_loop.py`, `benchmarks/eval_obstacle.py` |
+
+The four interfaces are deliberately small; nothing in `core/` knows which policy, simulator or robot it is running on.
+All geometry is metric and in the world frame of the robot base: the only calibration a new embodiment needs is the
+3x3 gain `G` of the action map (metres of end-effector motion per unit action per control step), fitted by least
+squares on a few unguided rollouts.
+
+### Porting checklist
+
+**New policy.** (1) Identify the model's denoising loop: time direction (`FlowSpec(noise_at_one=...)`), number of
+Euler steps, how the initial noise is drawn, what is computed once per chunk (prefix / KV cache) and what per step
+(the velocity call). (2) Action semantics and normalisation of the checkpoint: delta-EEF in [-1, 1] by (lo, hi) ->
+`DeltaEEFMap(lo, hi, G, n_valid)`; joint targets -> a Jacobian-based `ActionMap`. (3) `install()` replaces the loop
+so that the policy's ordinary `infer(obs)` call runs `guide.run(obs)`; keep the model's own post-processing after it.
+(4) `SupervisorConfig.exec_steps` = executed prefix length (5 of 10 for pi0.5, 8 of 16 for GR00T). (5) Fewer Euler
+steps mean fewer pushes per chunk: the same `scale = 1.0` worked for 10 and 4 steps, re-check on your model.
+(6) Regression: an unguided run through the installed layer (`GuideConfig(mode="none")`) must reproduce the model's
+own sampler bit for bit (`analysis/eqv_compare.py`).
+
+**New simulator or real robot.** (1) One end-effector reference point, shared by `RobotModel.eef_pos()`, the action
+map and the scene frame. (2) Sphere model: gripper / hand spheres (margin 1.0 cm), the arm links that can reach the
+obstacles (margin 1.5 cm), radii from the collision meshes; ~25 spheres are enough. (3) Motion model per sphere:
+`M_p = J_p J_ee^+` from the position Jacobians (`arm_motion="jac"`), or the `alpha` heuristic. (4) Held object: name +
+spheres that ride with the hand, from the gripper state. (5) Calibrate `G` from unguided rollouts (EEF displacement
+per action). (6) On hardware: run the layer in the policy process, budget its latency in the control period, feed
+the scene from perception (see below) and keep an independent stop on measured clearance; the layer reports
+`cost_final` and `pred_min_clearance` per chunk for such a watchdog.
+
+**New obstacle source.** Static obstacles as vertical cylinders (centre, radius, half height): fitted from a point
+cloud or read from a map. A human arm as two capsules from any hand / body tracker: `HumanArmTrack.observe(elbow,
+fingertip)` once per control step; it predicts the poses over the chunk (constant velocity) and inflates the radii by
+`margin + |v_tip| * tau`. Other moving obstacles: implement `Scene.capsules(H)` returning predicted poses at chunk steps
+0..H with the safety margin already added.
 
 ## Layout
 
@@ -36,7 +73,7 @@ safeguide/
   adapters/
     base.py              FlowPolicyAdapter interface
     pi05_openpi.py       Pi05Adapter (openpi PyTorch pi0 / pi0.5)          verified bit-identical to the research code
-    groot_n1.py          GrootN1Adapter (Isaac-GR00T N1.x action head)     skeleton, untested: verify against N1.7 source
+    groot_n1.py          GrootN1Adapter (Isaac-GR00T N1.7 action head)     verified on the LIBERO checkpoints
   robot/
     base.py              RobotModel interface
     mujoco_panda.py      Panda in robosuite/MuJoCo: gripper + link5/6/7 spheres, Jacobian motion matrices, held object
@@ -46,9 +83,9 @@ safeguide/
 ```
 
 Benchmark-side glue (LIBERO specific) stays outside the package: `obstacle.PillarScene` (pillars installed in the
-env), `hand.HandCapsuleScene` (scripted human arm + its prediction), and the evaluator `eval_obstacle.py`.
+env), `hand.HandCapsuleScene` (scripted human arm + its prediction), and the evaluator `eval_obstacle.py` (all in `benchmarks/`).
 
-## The two inference-time tasks and their cost functions
+## The two built-in constraints and their cost functions
 
 Shared notation: robot collision spheres p with centres x_hp at chunk step h (gripper 8, forearm/wrist links 15, held
 object ≤ 3), radii r_p, margins m_p (1.0 cm gripper / object, 1.5 cm arm), step weights w_h (1 on the executed prefix,
@@ -93,7 +130,7 @@ layer = sg.compose(adapter, robot, static_task, dynamic_task).install()         
 # per control step (task 2):  dynamic_task.track.observe(elbow, fingertip)
 ```
 
-## The four interfaces
+## The four interfaces (signatures)
 
 | Interface | Implement per | Must provide |
 |---|---|---|
@@ -121,7 +158,7 @@ for episode in episodes:
         env.step(plan.popleft())
 ```
 
-`eval_obstacle.py --engine auto` routes `--guidance g1` and `--guidance none` through the package and the research
+`benchmarks/eval_obstacle.py --engine auto` routes `--guidance g1` and `--guidance none` through the package and the research
 variants (steer / oc / car / mppi) through the legacy `guidance.GuidedSampler`, which imports its cost primitives from
 `safeguide.core.cost` so both share one definition of clearance and cost.
 
@@ -145,7 +182,7 @@ venv, so the two talk over zmq (msgpack + msgpack_numpy, the wire format of gr00
 
 ```
 evaluator (openpi venv)                                  GR00T venv
-eval_obstacle.py --policy groot                          safeguide/server/groot_server.py
+benchmarks/eval_obstacle.py --policy groot               safeguide/server/groot_server.py
   Supervisor next to the sim -> ctx ──obs + ctx──►       Gr00tPolicy with the action head's denoising loop replaced
   RemoteGuidedPolicy.infer()  ◄── chunk (16x7) + log     by Guide (GrootN1Adapter); decode_action un-normalises
 ```
@@ -155,8 +192,8 @@ eval_obstacle.py --policy groot                          safeguide/server/groot_
 cd $WS/0Xuehui/Isaac-GR00T && PYTHONPATH=$PROJ CUDA_VISIBLE_DEVICES=0 uv run --no-sync python \
     $PROJ/safeguide/server/groot_server.py --model-path checkpoints/GR00T-N1.7-LIBERO/libero_spatial --port 5556 --guidance g1
 # obstacle-free baselines (needed for pillar / hand placement and for calibrating G), then the benchmark
-.venv/bin/python ../eval_libero.py --policy groot --groot_port 5556 --suite libero_spatial --replan_steps 8 --out ../runs/baseline_groot
-.venv/bin/python ../eval_obstacle.py --policy groot --groot_port 5556 --baseline_dir ../runs/baseline_groot --replan_steps 8 ...
+.venv/bin/python ../benchmarks/eval_libero.py --policy groot --groot_port 5556 --suite libero_spatial --replan_steps 8 --out ../runs/baseline_groot
+.venv/bin/python ../benchmarks/eval_obstacle.py --policy groot --groot_port 5556 --baseline_dir ../runs/baseline_groot --replan_steps 8 ...
 ```
 
 Facts about the LIBERO checkpoints (`nvidia/GR00T-N1.7-LIBERO/<suite>`, read from the config and the source): action
@@ -165,17 +202,17 @@ horizon 40 in the model (padded; 16 carry real actions, `DeltaEEFMap.n_valid`), 
 q01/q99, gripper decoded in [0, 1] and converted by `remote.libero_action` exactly as the reference LIBERO env does.
 Observations: both 256x256 cameras rotated 180 deg, 8-D state (xyz, axis-angle, 2 gripper joints), the task string.
 
-## Porting checklist for GR00T N1.7
+## Porting log: GR00T N1.7 (what had to be done)
 
 1. Read the installed `gr00t/model/action_head/flow_matching_action_head.py`: confirm `get_action`'s denoising loop
    (time direction, `num_inference_timesteps`, `num_timestep_buckets`, `state_encoder`, `future_tokens`,
    `action_encoder`, `model`, `action_decoder`) and fix the names in `adapters/groot_n1.py` accordingly.
 2. Action semantics of the fine-tuned embodiment: delta-EEF (LIBERO fine-tunes) -> `DeltaEEFMap(min, max, G)` with a
-   freshly calibrated `G` (`calibrate_action_model.py` on unguided rollouts); joint targets -> new `ActionMap`
+   freshly calibrated `G` (`benchmarks/calibrate_action_model.py` on unguided rollouts); joint targets -> new `ActionMap`
    through the arm Jacobian.
 3. `SupervisorConfig.exec_steps` = the executed prefix length (8 of 16 for GR00T defaults); margins unchanged.
 4. Re-tune `scale` / `cbf_vref` for the shorter flow (4 Euler steps instead of 10): the push is applied 2.5x fewer
    times per chunk.
-5. Regression: run `eval_obstacle.py` gate17 / hand benchmarks with the new adapter and compare against the
+5. Regression: run `benchmarks/eval_obstacle.py` gate17 / hand benchmarks with the new adapter and compare against the
    pi0.5 numbers in the project README; expect the unguided baseline to differ (different policy), the paired
    improvement to persist.

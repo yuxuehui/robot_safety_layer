@@ -19,6 +19,8 @@ _LAZY = {
     "Guide": ".core.guide", "GuideConfig": ".core.guide",
     "Supervisor": ".core.supervisor", "SupervisorConfig": ".core.supervisor", "build_ctx": ".core.supervisor",
     "ChunkCostContext": ".core.cost", "ActionMap": ".core.cost", "DeltaEEFMap": ".core.cost",
+    "chunk_eef_positions": ".core.cost", "sphere_positions": ".core.cost", "sphere_clearance": ".core.cost",
+    "step_weights": ".core.cost", "obstacle_costs": ".core.cost",
     "FlowSpec": ".core.flow", "OPENPI_FLOW": ".core.flow", "GROOT_FLOW": ".core.flow",
     "FlowPolicyAdapter": ".adapters.base", "Pi05Adapter": ".adapters.pi05_openpi", "GrootN1Adapter": ".adapters.groot_n1",
     "RobotModel": ".robot.base", "MujocoPandaRobot": ".robot.mujoco_panda",

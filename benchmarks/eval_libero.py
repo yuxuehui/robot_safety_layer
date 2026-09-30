@@ -8,7 +8,7 @@ Per episode it also stores (eef_pos, eef_quat, action) at every control step so 
 action -> EEF displacement model used by the guidance cost can be calibrated.
 
 Usage (from openpi/ with env.sh sourced):
-  CUDA_VISIBLE_DEVICES=0 .venv/bin/python ../eval_libero.py --suite libero_spatial --tasks 0-4 --episodes 10
+  CUDA_VISIBLE_DEVICES=0 .venv/bin/python ../benchmarks/eval_libero.py --suite libero_spatial --tasks 0-4 --episodes 10
 """
 import argparse
 import collections

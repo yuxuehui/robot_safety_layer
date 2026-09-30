@@ -22,7 +22,7 @@ for arm in ${@:-none sota car}; do
   esac
   OUT=$PROJ/runs/video_3way/${TAG}_$arm; mkdir -p $OUT/logs
   for s in 0 1 2; do
-    CUDA_VISIBLE_DEVICES=$g setsid nohup .venv/bin/python ../eval_obstacle.py --suite libero_spatial --eps $EPS --torch_seed $s --record \
+    CUDA_VISIBLE_DEVICES=$g setsid nohup .venv/bin/python ../benchmarks/eval_obstacle.py --suite libero_spatial --eps $EPS --torch_seed $s --record \
         --calib $C --out $OUT $LAY $EX > $OUT/logs/seed$s.log 2>&1 < /dev/null &
     g=$(( (g+1) % 4 )); sleep 3
   done

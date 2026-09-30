@@ -1,7 +1,7 @@
 """Compose side-by-side rollout videos (no guidance | G1 guidance [| more arms]) from eval_obstacle.py --record output.
 
 Usage (pod3, openpi venv):
-  python compose_video.py --plan video_plan.json --out runs/video_out
+  python demo/compose_video.py --plan demo/plans/<plan>.json --out runs/video_out   (from the project root)
 
 plan JSON:
 {

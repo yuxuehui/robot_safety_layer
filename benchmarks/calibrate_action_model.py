@@ -10,7 +10,7 @@ and reports one-step R^2 plus the open-loop error of the predicted EEF position 
 H = 5 and 10 steps (the executed / full chunk length of pi05_libero), starting from the
 true position at chunk start and using only the commanded actions.
 
-Usage: python calibrate_action_model.py runs/baseline/libero_spatial [more dirs...]
+Usage: python benchmarks/calibrate_action_model.py runs/baseline/libero_spatial [more dirs...]
 """
 import glob
 import json

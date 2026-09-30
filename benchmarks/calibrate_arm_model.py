@@ -6,7 +6,7 @@ MuJoCo reports a pillar-arm contact after mj_forward. A good model has clearance
 there is contact. Reports, per radius scale: false-negative rate (contact but clearance > 0, the
 dangerous case), false-positive rate, and the clearance distribution at contact.
 
-Usage (openpi venv): python calibrate_arm_model.py
+Usage (openpi venv): python benchmarks/calibrate_arm_model.py
 """
 import pathlib
 

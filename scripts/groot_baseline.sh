@@ -8,7 +8,7 @@ export PYTHONPATH=$PYTHONPATH:$PROJ OMP_NUM_THREADS=4 JAX_PLATFORMS=cpu
 cd $PROJ/openpi
 mkdir -p $PROJ/runs/baseline_groot
 run() { gpu=$1; port=$2; suite=$3; tasks=$4
-  CUDA_VISIBLE_DEVICES=$gpu setsid nohup .venv/bin/python ../eval_libero.py --policy groot --groot_port $port --suite $suite --tasks $tasks \
+  CUDA_VISIBLE_DEVICES=$gpu setsid nohup .venv/bin/python ../benchmarks/eval_libero.py --policy groot --groot_port $port --suite $suite --tasks $tasks \
       --episodes $EPS --replan_steps 8 --out ../runs/baseline_groot > $PROJ/runs/baseline_groot/${suite}_${tasks}.log 2>&1 < /dev/null &
 }
 # two client processes per server: the zmq REP socket serialises them, the sim/render work overlaps
@@ -20,5 +20,5 @@ wait_all
 echo "baselines done $(date)"
 for suite in libero_spatial libero_object; do
   echo "== $suite: $(cat $PROJ/runs/baseline_groot/$suite/results_*.jsonl | wc -l) episodes, success $(cat $PROJ/runs/baseline_groot/$suite/results_*.jsonl | grep -c '"success": true')"
-  .venv/bin/python ../calibrate_action_model.py ../runs/baseline_groot/$suite 2>&1 | tail -8
+  .venv/bin/python ../benchmarks/calibrate_action_model.py ../runs/baseline_groot/$suite 2>&1 | tail -8
 done

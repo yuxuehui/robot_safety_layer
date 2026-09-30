@@ -45,9 +45,13 @@ class Guide:
     """Guided sampler. Set `ctx` (ChunkCostContext) and optionally `escape_off` before every policy call; read
     `last_log` afterwards. `adapter.install(guide)` hooks it into the policy's own inference path."""
 
-    def __init__(self, adapter, cfg: GuideConfig | None = None, recovery: RecoveryConfig | None = None):
+    def __init__(self, adapter, cfg: GuideConfig | None = None, recovery: RecoveryConfig | None = None, cost_fn=None):
         self.adapter = adapter
         self.cfg = cfg or GuideConfig()
+        # Optional user-defined constraint: cost_fn(a_hat, ctx, T) -> (J (B,) differentiable, violation (B,) in metres).
+        # None = the built-in obstacle cost (cylinders + capsules of the Scene). The violation scales the push through
+        # min(1, violation / ctx.cbf_vref) exactly like the built-in barrier.
+        self.cost_fn = cost_fn
         self.ctx: ChunkCostContext | None = None  # set by the Supervisor / evaluator before each policy call
         self.escape_off = None  # deadlock escape: world-frame displacement offset per control step (or None)
         self.recovery = recovery  # gated learned correction vector (Algorithm 1, line 10: gate * A(u)); None = off
@@ -143,7 +147,15 @@ class Guide:
                 if i == 0 and record:
                     self._a1 = flow.a_hat(x_t, t, v).detach()  # the policy's unguided intent for this chunk
                 g = torch.zeros_like(x_t)
-                if guide:
+                if guide and self.cost_fn is not None:  # user-defined constraint (see class docstring)
+                    with torch.enable_grad():
+                        a_hat = flow.a_hat(x_t, t, v).detach().requires_grad_(True)
+                        J, viol = self.cost_fn(a_hat, ctx, T)
+                        c = J.sum()
+                        if c.item() > 0:
+                            g = torch.autograd.grad(c, a_hat)[0]
+                    mag = (viol.detach().reshape(-1) / ctx.cbf_vref).clamp(max=1.0).view(-1, 1, 1)
+                elif guide:
                     with torch.enable_grad():
                         a_hat = flow.a_hat(x_t, t, v).detach().requires_grad_(True)
                         costs_k, clear_hat, vmax, clr = obstacle_costs_full(a_hat, ctx, T)

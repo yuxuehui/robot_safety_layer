@@ -21,7 +21,7 @@ for L in single gate17 gate20 hsweep hreach; do
     if [ $arm = none ]; then EX="--guidance none"; port=5562; else port=5561; case $L in h*) EX="$HND";; *) EX="$PIL";; esac; fi
     for s in 0 1 2; do
       name=video_groot/${L}_${arm}_s$s; mkdir -p $PROJ/runs/$name
-      CUDA_VISIBLE_DEVICES=$g setsid nohup .venv/bin/python ../eval_obstacle.py --suite libero_spatial --eps ${EPS[$L]} \
+      CUDA_VISIBLE_DEVICES=$g setsid nohup .venv/bin/python ../benchmarks/eval_obstacle.py --suite libero_spatial --eps ${EPS[$L]} \
           --policy groot --groot_port $port --replan_steps 8 --baseline_dir ../runs/baseline_groot --calib $CG \
           --out ../runs/$name --torch_seed $s --record ${LAY[$L]} $EX > $PROJ/runs/$name/run.log 2>&1 < /dev/null &
       g=$(( (g+1) % 4 )); sleep 1

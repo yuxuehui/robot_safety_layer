@@ -27,7 +27,7 @@ def main():
     ap.add_argument("--clean_window", type=float, default=0.10)
     ap.add_argument("--radius", type=float, default=0.025)
     ap.add_argument("--height", type=float, default=0.30)
-    ap.add_argument("--baseline_dir", default=str(pathlib.Path(__file__).resolve().parent / "runs" / "baseline"))
+    ap.add_argument("--baseline_dir", default=str(pathlib.Path(__file__).resolve().parent.parent / "runs" / "baseline"))
     ap.add_argument("--episodes", type=int, default=10)
     args = ap.parse_args()
     spec = ob.ObstacleSpec(radius=args.radius, height=args.height, visible=False)

@@ -7,8 +7,8 @@ fraction of the path's horizontal arc length, shifted sideways by --offset
 or where the path already passes above the pillar top, are rejected.
 
 Usage (from openpi/, env.sh sourced, PYTHONPATH += $PROJ):
-  .venv/bin/python ../eval_obstacle.py --suite libero_spatial --tasks 0-4 --episodes 10 --guidance none
-  .venv/bin/python ../eval_obstacle.py ... --guidance g1 --scale 1.0
+  .venv/bin/python ../benchmarks/eval_obstacle.py --suite libero_spatial --tasks 0-4 --episodes 10 --guidance none
+  .venv/bin/python ../benchmarks/eval_obstacle.py ... --guidance g1 --scale 1.0
 """
 import argparse
 import collections
