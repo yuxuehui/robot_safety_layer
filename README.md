@@ -219,7 +219,7 @@ seed. Red border = physics contact with the obstacle; the timeline shows the gri
 
 LIBERO-spatial + LIBERO-object, obstacles placed on the frozen policy's own path (unseen in training), 3 noise seeds,
 paired episodes (same placement and seed for every arm). *Safe success* = task completed with no physics contact
-with the obstacle; *violation* = any contact; the remainder did not complete the task without contact.
+with the obstacle; *violation* = any contact; the remainder are *state OOD* (no contact, task not completed).
 
 **pi0.5** (10 Euler steps, replan every 5 steps)
 
@@ -243,15 +243,15 @@ with the obstacle; *violation* = any contact; the remainder did not complete the
 | Dynamic: hand reaching | 583 | 2.2 % / 97.4 % | **16.6 % / 4.3 %** | 0.15 → 0.41 s |
 
 
-Violations drop 3–25x under every constraint and for both policies. The residual failures are stalls: after the
-detour the robot is in a state the frozen policy never saw and it does not complete the task.
+Violations drop 3–25x under every constraint and for both policies. The residual failures are **state OOD**: after
+the detour the robot is in a state the frozen policy never saw (out of distribution) and it does not complete the task.
 
-**Failure cases (GR00T N1.7 + safety layer, gate ±17 cm).** Four episodes that end without contact but without the task
-being completed (220-step limit). In each of them the layer has done its job: the arm is steered around the pillars
+**Failure cases: state OOD (GR00T N1.7 + safety layer, gate ±17 cm).** Four episodes that end without contact but
+without the task being completed (220-step limit). In each of them the layer has done its job: the arm is steered around the pillars
 with no collision. The frozen policy then sits in a state it never saw during training, dithers a few centimetres
 back and forth, and never returns to the task.
 
-<table><tr><td width="25%" align="center"><img src="docs/results/groot_stall_1.gif" width="100%"><br><sub>stall 1 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_2.gif" width="100%"><br><sub>stall 2 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_3.gif" width="100%"><br><sub>stall 3 — bowl on the stove</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_4.gif" width="100%"><br><sub>stall 4 — bowl on the stove</sub></td></tr></table>
+<table><tr><td width="25%" align="center"><img src="docs/results/groot_stall_1.gif" width="100%"><br><sub>state OOD 1 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_2.gif" width="100%"><br><sub>state OOD 2 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_3.gif" width="100%"><br><sub>state OOD 3 — bowl on the stove</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_4.gif" width="100%"><br><sub>state OOD 4 — bowl on the stove</sub></td></tr></table>
 
 ### (2) Guidance alone vs. guidance + CAR correction
 
@@ -259,7 +259,7 @@ Does the optional off-manifold correction term (CAR, Step 2) help? Same protocol
 
 <p align="center"><img src="docs/results/pi05_guidance_vs_car_gate20.gif" width="100%"><br>
 <sub>Two pillars (gate ±20 cm). Left: frozen pi0.5; middle: + guidance; right: + guidance + CAR. Top-view inset: pillars, end-effector trail;
-orange = guidance push in the current chunk, purple arrow = CAR correction (×3). In this seed guidance alone stalls after the detour (220 steps, no contact) and CAR completes the task in 111 steps.</sub></p>
+orange = guidance push in the current chunk, purple arrow = CAR correction (×3). In this seed guidance alone goes state OOD after the detour (220 steps, no contact, task not completed) and CAR completes the task in 111 steps.</sub></p>
 
 | | pi0.5 | + guidance | + guidance + CAR |
 |---|---|---|---|
@@ -276,8 +276,8 @@ CAR vs guidance on safe success (paired McNemar, wins/losses): single 16/11, p =
 gate ±20 cm 4/6, p = 0.75.
 
 **Conclusion.** CAR does not improve on the guidance layer (within noise on the single and ±20 cm layouts, slightly
-worse on ±17 cm) and triples the policy-call latency. The remaining failures are stalls, not collisions, and they are
-state-level out-of-distribution: after the detour the robot is in a state the policy never saw and it loses the task.
+worse on ±17 cm) and triples the policy-call latency. The remaining failures are state OOD, not collisions: after the
+detour the robot is in a state the policy never saw and it loses the task.
 They are not action-level off-manifold errors (re-sampling on the policy's manifold did not recover them), so the
 only remedy is to bring the robot back to a state the policy knows. Given the latency cost, we deploy the guidance
 layer without CAR.
