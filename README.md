@@ -30,11 +30,11 @@ We evaluate on LIBERO with the two constraints (static pillars, a moving human a
 
 ## 🧱 Step 1: Constraint functions
 
-A constraint is a differentiable cost `J(â)` on the policy's predicted action chunk `â`. The layer maps `â` to the
-end-effector path and to a sphere model of the robot (gripper, forearm links, held object), so a constraint only has
-to say how far those spheres must stay from something. The two built-in constraints are **control barrier functions
+A constraint is a differentiable cost `J(â)` on the policy's predicted action chunk `â`. The safety layer maps `â` to
+the end-effector path and to a sphere model of the robot (gripper, forearm links, held object), so a constraint only has
+to say how far those spheres must stay from the obstacles. The two example constraints are **control barrier functions
 (CBF)** on that clearance: the robot may approach an obstacle at a rate proportional to its current distance and never
-crosses a small safety margin. All they need from the environment is the **approximate location of the obstacles**;
+crosses a small safety margin. All they need from the environment is the **approximate location of the obstacles**:
 no map, no retraining.
 
 <table><tr>
