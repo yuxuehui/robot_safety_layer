@@ -1,100 +1,65 @@
-# robot_safety_layer
-
-More and more robots are controlled by learning-based policies. How can we guarantee their safety at runtime?
-This repository is about the **safety of learning-based policies**.
-
-Our solution is a plug-in **safety layer for frozen flow-matching VLA policies** (e.g., pi0.5, GR00T N1.7). It acts
-at inference time and never changes the pretrained weights of the policy.
+# Human-Robot Safety
 
 ![Motivation and solution: a plug-in safety layer between the generative policy and the robot](docs/overview.png)
 
+More and more robots are controlled by learning-based policies. **How can we guarantee their safety at runtime?**
+This repository is about the safety of learning-based policies.
+Our solution is a **plug-in safety layer for frozen flow-matching VLA policies** (e.g., pi0.5, GR00T N1.7).
+It acts at inference time and never changes the pretrained weights of the policy.
+
 The setup has two components:
 
-1. **Runtime safety constraints.** At inference time you define the constraints the robot must satisfy as
-   differentiable cost functions on the action chunk. We provide two examples: static obstacles (e.g., assets in the
-   environment) and dynamic obstacles (e.g., a human moving in the shared workspace). Details in
-   [Step 1 — Constraint functions](#-step-1--constraint-functions).
-2. **Your pretrained policy + our safety layer.** Details in
-   [Step 2 — Incorporating the safety layer into a flow policy](#%EF%B8%8F-step-2--incorporating-the-safety-layer-into-a-flow-policy).
-   The layer steers the output of the VLA policy by adding to its base velocity (1) a **guidance term** `g` from the
-   constraint cost and (2) optionally an **off-manifold correction term** `CAR`, because naively editing the action
-   can push it off the action manifold. In most environments the guidance term alone already raises the safe
-   success rate and lowers the violation rate; the correction term can fix some corner cases of off-manifold
-   drift but costs a lot of latency, so in most cases the guidance term alone is the right choice.
+1. **Runtime safety constraints** ([Step 1](#-step-1-constraint-functions)).
+   At inference time you can define the constraints the robot must satisfy as differentiable cost functions on the
+   action chunk. We provide two examples: *static obstacles* (e.g., assets in the environment) and
+   *dynamic obstacles* (e.g., a human moving in the shared workspace).
+2. **Your pretrained policy + our safety layer** ([Step 2](#%EF%B8%8F-step-2-incorporating-the-safety-layer-into-a-flow-policy)).
+   The layer steers the output of the VLA policy by adding two terms to its base velocity:
+   * a guidance term `g` from the constraint cost;
+   * optionally, an off-manifold correction term (CAR), because naively editing the action can push it off
+     the action manifold.
+
+   In most environments the guidance term alone already raises the safe success rate and lowers the violation
+   rate. The correction term fixes some corner cases of off-manifold drift but adds a lot of latency, so
+   guidance alone is usually the right choice.
 
 We evaluate on LIBERO with the two constraints (static pillars, a moving human arm) for pi0.5 and GR00T N1.7
-([Results](#-results)).
-
-```
-safeguide/     the safety layer (pip install -e .)
-examples/      porting templates: policy adapter, robot model, scene, custom cost, control loop
-benchmarks/    the LIBERO evaluator used for the results below (pillars, moving hand, action-gain calibration)
-```
-
-**Porting to another policy, simulator or real robot** means implementing one of four small interfaces
-(`FlowPolicyAdapter`, `RobotModel`, `Scene`, or a `cost_fn`) and calibrating one 3x3 action gain; see
-[`safeguide/README.md`](safeguide/README.md) ("where things live") and the templates in [`examples/`](examples/).
+(see [Results](#-results)).
 
 ---
 
-## 🧱 Step 1 — Constraint functions
+## 🧱 Step 1: Constraint functions
 
-A constraint is a cost `J(â)` on the **clean action chunk estimate** `â` (H steps of the policy's action space).
-The layer turns `â` into world-frame geometry through two fixed pieces and then applies the constraint:
-
-* `ActionMap` (`safeguide/core/cost.py`): normalised actions → end-effector path `p_h`, h = 1..H
-  (`DeltaEEFMap` for delta-EEF policies; a Jacobian map for joint-space policies).
-* `RobotModel` (`safeguide/robot/`): collision spheres of the gripper, forearm links and the held object, moved with
-  the end effector by a Jacobian model `x_hp = x_0p + M_p (p_h − p_0)`.
-
-Both built-in examples share one **discrete-time barrier** on the clearance `c_khp` between sphere `p` and obstacle
-`k` at chunk step `h` (margins `m_p` = 1.0 cm gripper / 1.5 cm arm, `d_safe` = 3 cm, γ = 0.3, weights `w_h` = 1 on
-the executed steps and 0.3 on the tail; `c0` is the clearance measured at the chunk start):
-
-```
-f_khp = min(d_safe, m_p + (1 − γ)^(h+1) · relu(c0_kp − m_p))          barrier floor
-J(â)  = Σ_k Σ_h w_h Σ_p relu(f_khp − c_khp)²                          constraint cost
-```
-
-Far spheres may approach at a rate proportional to their clearance, spheres that keep their distance are never
-penalised, and the margin itself is never crossed.
+A constraint is a differentiable cost `J(â)` on the policy's predicted action chunk `â`. The layer maps `â` to the
+end-effector path and to a sphere model of the robot (gripper, forearm links, held object), so a constraint only has
+to say how far those spheres must stay from something. The two built-in constraints are **control barrier functions
+(CBF)** on that clearance: the robot may approach an obstacle at a rate proportional to its current distance and never
+crosses a small safety margin. All they need from the environment is the **approximate location of the obstacles**;
+no map, no retraining.
 
 <table><tr>
-<td width="50%"><img src="docs/constraint_static_pillar.png" alt="Example 1: a pillar on the robot's path" width="100%"><br><sub><b>Example 1</b> — static obstacles: pillars placed on the policy's own approach path (unseen in training)</sub></td>
-<td width="50%"><img src="docs/constraint_dynamic_hand.png" alt="Example 2: a human arm reaching into the workspace" width="100%"><br><sub><b>Example 2</b> — dynamic obstacle: a human arm sweeping across / reaching into the workspace</sub></td>
+<td width="50%"><img src="docs/groot_gate17_guidance.gif" alt="Example 1: static obstacles (pillars), GR00T N1.7 without / with the safety layer" width="100%"><br><sub><b>Example 1</b> — static obstacles: two pillars on the policy's path (unseen in training). GR00T N1.7 left = frozen policy, right = + safety layer.</sub></td>
+<td width="50%"><img src="docs/groot_hand_reach_guidance.gif" alt="Example 2: a human arm reaching for the same object, GR00T N1.7 without / with the safety layer" width="100%"><br><sub><b>Example 2</b> — dynamic obstacle: a human arm reaching for the same object. GR00T N1.7 left = frozen policy, right = + safety layer.</sub></td>
 </tr></table>
 
-### Example 1 — static obstacles (`StaticObstacleTask`)
+**Example 1 — static obstacles** ([`StaticObstacleTask`](safeguide/tasks.py)): obstacles are vertical cylinders
+(centre, radius, height) read from the scene, e.g. pillars, fixtures, table edges. Comes with two episode heuristics,
+arm-margin release after passing the obstacle and a deadlock escape.
 
-Obstacles are z-aligned cylinders `(c_k, R_k, H_k)` read from the scene (pillars, fixtures, table edges):
-
-```
-c_khp = SDF_cyl_k(x_hp) − r_p
-```
-
-Episode heuristics attached to this task: arm-margin release once the end effector has passed the obstacle line
-(+3 cm hysteresis) and a deadlock escape (lift 1.5 cm per step for 2 chunks when the guidance has been active for 4
-chunks without progress).
-
-### Example 2 — dynamic obstacle, a human arm (`DynamicObstacleTask`)
-
-A human arm is tracked as two capsules (elbow → wrist, wrist → fingertip). Their poses are predicted over the chunk
-(`a_k(h), b_k(h)`, h = 1..H, constant-velocity extrapolation of the tracked points) and their radii are inflated by
-a human-safety margin and a reaction-time allowance:
-
-```
-R_k   ← R_k + m_hand + |v_tip| · τ                 ("tight": m_hand = 0, τ = 0.1 s;  "safe": 3 cm, 0.2 s)
-c_khp = SDF_cap(x_hp; a_k(h), b_k(h)) − r_p − R_k
-```
-
-No release and no escape: retreating and waiting for the arm to pass is the desired behaviour.
+**Example 2 — dynamic obstacle, a human arm** ([`DynamicObstacleTask`](safeguide/tasks.py),
+[`HumanArmTrack`](safeguide/scene/human_arm.py)): the arm is tracked as two capsules (elbow → wrist → fingertip),
+its pose is extrapolated over the coming chunk, and the capsule radii are inflated by a human-safety margin plus a
+reaction-time allowance. No escape: retreating and waiting for the arm to pass is the desired behaviour.
 
 ```python
 import safeguide as sg
 layer = sg.compose(adapter, robot, sg.StaticObstacleTask(scene)).install()       # example 1
 layer = sg.compose(adapter, robot, sg.DynamicObstacleTask.tight()).install()     # example 2 (feed .track.observe(elbow, tip) every step)
-layer = sg.compose(adapter, robot, static_task, dynamic_task).install()          # both: J = J_s + J_d
+layer = sg.compose(adapter, robot, static_task, dynamic_task).install()          # both
 ```
+
+The exact barrier and cost definitions are in [`safeguide/tasks.py`](safeguide/tasks.py) (docstring) and
+[`safeguide/core/cost.py`](safeguide/core/cost.py).
 
 ### Define your own constraint
 
@@ -135,7 +100,7 @@ carries the margins, `d_safe`, `cbf_vref` and the executed-prefix length; `T` th
 
 ---
 
-## 🛡️ Step 2 — Incorporating the safety layer into a flow policy
+## 🛡️ Step 2: Incorporating the safety layer into a flow policy
 
 The policy's sampler integrates a velocity field `v_θ(x_t, t | obs)` from noise to the action chunk. The layer
 wraps that loop (Algorithm 1). `t` runs in the policy's own convention (`FlowSpec`: 1→0 for openpi, 0→1 for GR00T);
