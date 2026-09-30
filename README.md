@@ -38,8 +38,8 @@ crosses a small safety margin. All they need from the environment is the **appro
 no map, no retraining.
 
 <table><tr>
-<td width="50%" align="center"><img src="docs/example1_static_pillars_groot.gif" width="360" alt="Example 1: static obstacles (pillars), GR00T N1.7 with the safety layer"><br><sub><b>Example 1</b> — static obstacles: two pillars on the policy's path (unseen in training). GR00T N1.7 + safety layer.</sub></td>
-<td width="50%" align="center"><img src="docs/example2_human_arm_groot.gif" width="360" alt="Example 2: a human arm reaching for the same object, GR00T N1.7 with the safety layer"><br><sub><b>Example 2</b> — dynamic obstacle: a human arm reaching for the same object. GR00T N1.7 + safety layer.</sub></td>
+<td width="50%" align="center"><img src="docs/example1_static_pillars_groot.gif" width="360" alt="Example 1: static obstacles (pillars), GR00T N1.7 with the safety layer"><br><sub><b>Example 1</b> — static obstacles: two pillars on the policy's path (unseen in training).</sub></td>
+<td width="50%" align="center"><img src="docs/example2_human_arm_groot.gif" width="360" alt="Example 2: a human arm reaching for the same object, GR00T N1.7 with the safety layer"><br><sub><b>Example 2</b> — dynamic obstacle: a human arm reaching for the same object. </sub></td>
 </tr></table>
 
 **Example 1 — static obstacles** ([`StaticObstacleTask`](safeguide/tasks.py)): obstacles are vertical cylinders
@@ -103,11 +103,24 @@ carries the margins, `d_safe`, `cbf_vref` and the executed-prefix length; `T` th
 ## 🛡️ Step 2: Incorporating the safety layer into a flow policy
 
 The policy's sampler integrates a velocity field `v_θ(x_t, t | obs)` from noise to the action chunk. The layer
-wraps that loop (Algorithm 1). `t` runs in the policy's own convention (`FlowSpec`: 1→0 for openpi, 0→1 for GR00T);
-`λ` is the push scale (1.0); `normalise` rescales the gradient to unit RMS and multiplies it by `min(1, violation / v_ref)`
-with `v_ref` = 1 cm (minimal intervention: a 1 mm violation gets a 10x smaller push than a 1 cm one).
+wraps that loop (Algorithm 1) and never touches the policy's weights. `t` runs in the policy's own convention
+(`FlowSpec`: 1→0 for openpi, 0→1 for GR00T); `λ` is the push scale (1.0); `normalise` rescales the gradient to unit RMS.
+
+The layer steers the output of the VLA policy by adding two terms to its base velocity `v` (Algorithm 1, line 10):
+
+* $\textcolor{#C00000}{\text{a guidance term } \hat{g}}$ from the constraint cost of Step 1 (**red** in Algorithm 1):
+  `v ← v + λ · ĝ`, with `ĝ = normalise(∂J/∂â)`. Always on; this is the safety layer.
+* $\textcolor{#7030A0}{\text{optionally, an off-manifold correction term } \mathrm{CAR}(u)}$ (**purple** in Algorithm 1):
+  `v ← v + gate(ctx) · CAR(u)`, because naively editing the action can push it off the action manifold. `u` is a
+  correction vector learned online within the episode and `gate(ctx)` opens only when the supervisor detects a
+  deadlock. **Off by default** (`gate(ctx) = 0` in every command of this README). Switch it on with
+  `--recovery 1` on the command line, or in Python with
+  `sg.Guide(adapter, cfg, recovery=sg.core.recovery.RecoveryConfig())` and `SupervisorConfig(recovery=True)`;
+  the original CAR variant of the legacy sampler is `--guidance car --car_param vector` (`benchmarks/guidance.py`).
 
 ![Algorithm 1: safety layer on top of a frozen flow policy. Black = the policy's own sampler, grey = comments, red = the safety layer, purple = the optional CAR correction term](docs/algorithm1.png)
+
+
 
 LaTeX source with the same colour code: [`docs/algorithm1.tex`](docs/algorithm1.tex). Red lines are the safety layer
 (this package); the purple term in line 10 is the optional learned correction (CAR), which is off (`gate(ctx) = 0`) in
@@ -115,10 +128,6 @@ every configuration used in this README. Notes: pi0.5 uses N = 10, H = 10, K = 5
 K = 8; λ = 1. Line 6 is the pi0.5 flow convention (t: 1 → 0); GR00T's â = x + (1 − t)·v is handled by its adapter,
 the rest is identical.
 
-Lines 5–11 are `Guide.sample` (`safeguide/core/guide.py`); line 2 and the `after_chunk` call in line 12 are the
-`Supervisor` (`safeguide/core/supervisor.py`). A model is plugged in through a `FlowPolicyAdapter`
-(`safeguide/adapters/base.py`): `prepare`, `velocity`, `sample_noise`, `flow` (time convention), `action_map`, and
-`install` (how the policy's own sampler is replaced). Two adapters exist.
 
 ### Example A — pi0.5 (openpi, PyTorch) + guidance
 
