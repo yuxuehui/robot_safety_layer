@@ -221,7 +221,7 @@ with the obstacle; *violation* = any contact; the remainder did not complete the
 
 **pi0.5** (10 Euler steps, replan every 5 steps)
 
-| Constraint / layout | n | frozen pi0.5 (safe / violation) | + safety layer (safe / violation) | latency per call |
+| Constraint / layout | n | frozen pi0.5 (safe success / violation) | + safety layer (safe success / violation) | latency per call |
 |---|---|---|---|---|
 | Static: two pillars, gate ±17 cm | 207 | 55.1 % / 44.0 % | **73.9 % / 16.4 %** | 0.29 → 0.32 s |
 | Static: two pillars, gate ±20 cm | 261 | 68.6 % / 29.9 % | **76.6 % / 10.0 %** | 0.33 → 0.34 s |
@@ -232,7 +232,7 @@ with the obstacle; *violation* = any contact; the remainder did not complete the
 
 **GR00T N1.7** (4 Euler steps, replan every 8 steps, same constraints and margins, no re-tuning)
 
-| Constraint / layout | n | frozen GR00T (safe / violation) | + safety layer (safe / violation) | latency per call |
+| Constraint / layout | n | frozen GR00T (safe success / violation) | + safety layer (safe success / violation) | latency per call |
 |---|---|---|---|---|
 | Static: gate ±17 cm | 210 | 58.1 % / 41.4 % | **64.3 % / 15.2 %** | 0.14 → 0.15 s |
 | Static: gate ±20 cm | 258 | 66.7 % / 30.6 % | **73.3 % / 14.3 %** | 0.15 → 0.16 s |
@@ -254,13 +254,13 @@ orange = guidance push in the current chunk, purple arrow = CAR correction (×3)
 
 | | pi0.5 | + guidance | + guidance + CAR |
 |---|---|---|---|
-| Single obstacle — safe success | 0.0 % | 12.5 % | 13.7 % |
-| Single obstacle — violation | 100 % | 20.8 % | 20.1 % |
-| Gate ±17 cm — safe success | 55.1 % | 73.9 % | 69.1 % |
-| Gate ±17 cm — violation | 44.0 % | 16.4 % | 19.8 % |
-| Gate ±20 cm — safe success | 68.6 % | 76.6 % | 75.9 % |
-| Gate ±20 cm — violation | 29.9 % | 10.0 % | 8.8 % |
-| Policy-call latency | 0.29–0.47 s | 0.32–0.71 s | 1.8–2.3 s |
+| Single obstacle — safe success | 0.0 % | 12.5 % | **13.7 %** |
+| Single obstacle — violation | 100 % | 20.8 % | **20.1 %** |
+| Gate ±17 cm — safe success | 55.1 % | **73.9 %** | 69.1 % |
+| Gate ±17 cm — violation | 44.0 % | **16.4 %** | 19.8 % |
+| Gate ±20 cm — safe success | 68.6 % | **76.6 %** | 75.9 % |
+| Gate ±20 cm — violation | 29.9 % | 10.0 % | **8.8 %** |
+| Policy-call latency | **0.29–0.47 s** | 0.32–0.71 s | 1.8–2.3 s |
 
 Paired episodes (placements × 3 seeds, LIBERO-spatial + LIBERO-object): single 408, gate ±17 cm 207, gate ±20 cm 261.
 CAR vs guidance on safe success (paired McNemar, wins/losses): single 16/11, p = 0.44; gate ±17 cm 2/12, p = 0.013;
