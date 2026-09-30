@@ -1,0 +1,46 @@
+{
+ "runs": [
+  "runs/video_3way/gate17_none",
+  "runs/video_3way/gate17_sota",
+  "runs/video_ab/gate17_car"
+ ],
+ "labels": [
+  "pi0.5 (no guidance)",
+  "pi0.5 + inference-time guidance",
+  "pi0.5 + inference-time guidance + CAR"
+ ],
+ "fps": 20,
+ "d_safe_cm": 1.0,
+ "card_sec": 1.5,
+ "show_task": false,
+ "subtitle": "20 Hz, real time. Clearance: gripper sphere model to pillar (guidance cost also models arm links and the held object). Red border = physics contact.",
+ "clips": [
+  {
+   "suite": "libero_spatial",
+   "task": 0,
+   "ep": 3,
+   "seed": 0,
+   "card": [
+    "Seed 1 / 3"
+   ]
+  },
+  {
+   "suite": "libero_spatial",
+   "task": 0,
+   "ep": 3,
+   "seed": 1,
+   "card": [
+    "Seed 2 / 3"
+   ]
+  },
+  {
+   "suite": "libero_spatial",
+   "task": 0,
+   "ep": 3,
+   "seed": 2,
+   "card": [
+    "Seed 3 / 3"
+   ]
+  }
+ ]
+}
