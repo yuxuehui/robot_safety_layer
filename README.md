@@ -202,6 +202,8 @@ copy (`config.json` `model_name` and `processor_config.json` `processor_kwargs.m
 
 ## 📊 Results
 
+The key observation is, without safety layer, even the pretrained VLA policies can see the obstacles it cannot sastify the inferenc-time constraints (i.e., aviding colide with static and dynamic obstavles), with safety layer can improve the 
+
 ### (1) Safety layer on pi0.5 and GR00T N1.7
 
 Each clip: left = frozen policy, right = frozen policy + safety layer, same task, same obstacle placement, same noise
@@ -243,6 +245,13 @@ with the obstacle; *violation* = any contact; the remainder did not complete the
 
 Violations drop 3–25x under every constraint and for both policies. The residual failures are stalls: after the
 detour the robot is in a state the frozen policy never saw and it does not complete the task.
+
+**Failure cases (GR00T N1.7 + safety layer, gate ±17 cm).** Four episodes that end without contact but without the task
+being completed (220-step limit). In each of them the layer has done its job: the arm is steered around the pillars
+with no collision. The frozen policy then sits in a state it never saw during training, dithers a few centimetres
+back and forth, and never returns to the task.
+
+<table><tr><td width="25%" align="center"><img src="docs/results/groot_stall_1.gif" width="100%"><br><sub>stall 1 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_2.gif" width="100%"><br><sub>stall 2 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_3.gif" width="100%"><br><sub>stall 3 — bowl on the stove</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_4.gif" width="100%"><br><sub>stall 4 — bowl on the stove</sub></td></tr></table>
 
 ### (2) Guidance alone vs. guidance + CAR correction
 
