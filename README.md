@@ -277,10 +277,8 @@ Paired episodes (placements × 3 seeds, LIBERO-spatial + LIBERO-object): single 
 CAR vs guidance on safe success (paired McNemar, wins/losses): single 16/11, p = 0.44; gate ±17 cm 2/12, p = 0.013;
 gate ±20 cm 4/6, p = 0.75.
 
-Such cases are rare, though. Across the benchmark the main cause of failure is **state OOD** (the rest are unsafe
-successes, i.e. constraint violations): as in the failure cases above, after the guidance has steered the arm around
-the obstacle the robot is in a state the policy never saw, and the policy loses the task. That is not an action-level
-error, so an action-level correction cannot fix it.
+**Some faliure cases:**
+However, state OOD is the main cause of failure (the rest faulure is unsafe success, i.e., vliatte constraints). like the video, after action steer by guidance, the robot is in a state the policy never saw and it fails
 
 **Conclusion.** Steering a frozen policy at inference time easily leads to state OOD. Action-level off-manifold
 corrections (pulling back to, or re-sampling on, the policy's manifold) generally do not help with it; the only remedy
