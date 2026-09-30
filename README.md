@@ -118,11 +118,7 @@ The layer steers the output of the VLA policy by adding two terms to its base ve
   learnable correction vector and `gate(ctx)` opens only when the supervisor detects a conflict between the guidance
   and the policy. **Off by default** (`gate(ctx) = 0` in every command of this README); switch it on with
   `--recovery 1` on the command line. We suggest keeping it off.
-  The learning objective of CAR is a **reward-weighted flow-matching (velocity-matching) loss**, evaluated only on the
-  gated steps where the guidance and the policy are in conflict: B candidate chunks are rolled out through the policy's
-  own flow, weighted by a softmax of their terminal reward (obstacle clearance, task progress, lateral deviation), and
-  `u` is the constant velocity residual that best maps the base velocity onto the rectified-flow velocity towards those
-  high-reward chunks (closed form, EMA over chunks). Details: *Conflict-Aware Additive Guidance for Flow Models under
+  The learning objective of CAR is a **reward-weighted flow-matching (velocity-matching) loss**, evaluated only on the gated steps where conflict, details: *Conflict-Aware Additive Guidance for Flow Models under
   Compositional Rewards*, [arXiv:2605.20758](https://arxiv.org/abs/2605.20758); implementation in
   [`benchmarks/guidance.py`](benchmarks/guidance.py) (`--guidance car --car_param vector`).
 
@@ -165,7 +161,7 @@ Command line (LIBERO, two pillars forming a gate; the configuration used in the 
 python benchmarks/eval_obstacle.py --suite libero_spatial --layout gate --gate_half_gap 0.17 --clean_gate 0.075 \
     --guidance g1 --scale 1.0 --grad_through_model 0 --cost_type cbf --margin_grip 0.010 --margin_arm 0.015 \
     --model_object 1 --arm_motion jac --arm_release 1 --escape_chunks 4 \
-    --calib runs/baseline/libero_spatial/action_model_calibration.npz --out runs/pi05_gate17
+    --baseline_dir runs/baseline --calib runs/baseline/libero_spatial/action_model_calibration.npz --out runs/pi05_gate17
 ```
 
 Moving human arm (Example 2, constant-velocity prediction, tight margin):
@@ -174,10 +170,12 @@ Moving human arm (Example 2, constant-velocity prediction, tight margin):
 python benchmarks/eval_obstacle.py --suite libero_spatial --extra_steps 100 --layout hand --hand_motion sweep --hand_visible 1 \
     --guidance g1 --scale 1.0 --grad_through_model 0 --cost_type cbf --margin_grip 0.010 --margin_arm 0.015 \
     --model_object 1 --arm_motion jac --hand_predict cv --margin_hand 0.0 --hand_margin_tau 0.1 \
-    --calib runs/baseline/libero_spatial/action_model_calibration.npz --out runs/pi05_hand
+    --baseline_dir runs/baseline --calib runs/baseline/libero_spatial/action_model_calibration.npz --out runs/pi05_hand
 ```
 
-`--guidance none` gives the frozen-policy reference. Both commands need obstacle-free baseline rollouts first
+These are the exact settings of the "+ safety layer" rows in the Results; the tables repeat each command for
+`--suite libero_spatial` and `--suite libero_object` with `--torch_seed 0`, `1` and `2`. `--guidance none` gives the
+frozen-policy reference. Both commands need obstacle-free baseline rollouts first
 (`benchmarks/eval_libero.py`): the obstacles are placed relative to those paths and the action gain `G` is fitted on
 them (`benchmarks/calibrate_action_model.py`).
 
@@ -291,6 +289,5 @@ the policy never saw, and it fails.
 
 Steering a frozen policy at inference time easily leads to state OOD. An action-level off-manifold
 correction such as CAR generally does not help with it; the only remedy
-is to bring the robot back to a state the policy knows. Most tasks show no strong conflict between the guidance and
-the policy, and CAR triples the policy-call latency, so we suggest deploying the guidance layer
+is to bring the robot back to a state the policy knows. Most tasks show no strong conflict, and CAR triples the policy-call latency, so we suggest deploying the guidance layer
 without CAR.
