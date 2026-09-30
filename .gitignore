@@ -7,3 +7,6 @@ runs/
 *.tgz
 *.pptx
 *.pdf
+*.egg-info/
+build/
+dist/
