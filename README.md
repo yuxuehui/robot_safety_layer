@@ -38,8 +38,8 @@ crosses a small safety margin. All they need from the environment is the **appro
 no map, no retraining.
 
 <table><tr>
-<td width="50%" align="center"><img src="docs/groot_gate17_guidance.gif" width="360" alt="Example 1: static obstacles (pillars), GR00T N1.7 with the safety layer"><br><sub><b>Example 1</b> — static obstacles: two pillars on the policy's path (unseen in training). GR00T N1.7 + safety layer.</sub></td>
-<td width="50%" align="center"><img src="docs/groot_hand_reach_guidance.gif" width="360" alt="Example 2: a human arm reaching for the same object, GR00T N1.7 with the safety layer"><br><sub><b>Example 2</b> — dynamic obstacle: a human arm reaching for the same object. GR00T N1.7 + safety layer.</sub></td>
+<td width="50%" align="center"><img src="docs/example1_static_pillars_groot.gif" width="360" alt="Example 1: static obstacles (pillars), GR00T N1.7 with the safety layer"><br><sub><b>Example 1</b> — static obstacles: two pillars on the policy's path (unseen in training). GR00T N1.7 + safety layer.</sub></td>
+<td width="50%" align="center"><img src="docs/example2_human_arm_groot.gif" width="360" alt="Example 2: a human arm reaching for the same object, GR00T N1.7 with the safety layer"><br><sub><b>Example 2</b> — dynamic obstacle: a human arm reaching for the same object. GR00T N1.7 + safety layer.</sub></td>
 </tr></table>
 
 **Example 1 — static obstacles** ([`StaticObstacleTask`](safeguide/tasks.py)): obstacles are vertical cylinders
