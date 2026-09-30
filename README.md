@@ -251,11 +251,11 @@ without the task being completed (220-step limit). In each of them the layer has
 with no collision. The frozen policy then sits in a state it never saw during training, dithers a few centimetres
 back and forth, and never returns to the task.
 
-<table><tr><td width="25%" align="center"><img src="docs/results/groot_stall_1.gif" width="100%"><br><sub>state OOD 1 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_2.gif" width="100%"><br><sub>state OOD 2 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_3.gif" width="100%"><br><sub>state OOD 3 — bowl on the stove</sub></td><td width="25%" align="center"><img src="docs/results/groot_stall_4.gif" width="100%"><br><sub>state OOD 4 — bowl on the stove</sub></td></tr></table>
+<table><tr><td width="25%" align="center"><img src="docs/results/groot_state_ood_1.gif" width="100%"><br><sub>state OOD 1 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_state_ood_2.gif" width="100%"><br><sub>state OOD 2 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_state_ood_3.gif" width="100%"><br><sub>state OOD 3 — bowl on the stove</sub></td><td width="25%" align="center"><img src="docs/results/groot_state_ood_4.gif" width="100%"><br><sub>state OOD 4 — bowl on the stove</sub></td></tr></table>
 
 ### (2) Guidance alone vs. guidance + CAR correction
 
-Does the optional off-manifold correction term (CAR, Step 2) help? Same protocol, pi0.5, three pillar layouts.
+The off-manifold correction term (CAR, Step 2) can help with some action-level off-manifold errors, pull back to datamanifold / re-sampling on the policy's manifold, can help recover.
 
 <p align="center"><img src="docs/results/pi05_guidance_vs_car_gate20.gif" width="100%"><br>
 <sub>Two pillars (gate ±20 cm). Left: frozen pi0.5; middle: + guidance; right: + guidance + CAR. Top-view inset: pillars, end-effector trail;
@@ -271,13 +271,8 @@ orange = guidance push in the current chunk, purple arrow = CAR correction (×3)
 | Gate ±20 cm — violation | 29.9 % | 10.0 % | **8.8 %** |
 | Policy-call latency | **0.29–0.47 s** | 0.32–0.71 s | 1.8–2.3 s |
 
-Paired episodes (placements × 3 seeds, LIBERO-spatial + LIBERO-object): single 408, gate ±17 cm 207, gate ±20 cm 261.
-CAR vs guidance on safe success (paired McNemar, wins/losses): single 16/11, p = 0.44; gate ±17 cm 2/12, p = 0.013;
-gate ±20 cm 4/6, p = 0.75.
+Some faliure cases:
+However, state OOD is the main cause of failure (the rest faulure is unsafe success, i.e., vliatte constraints). like the video, after action steer by guidance, the robot is in a state the policy never saw and it fails
 
-**Conclusion.** CAR does not improve on the guidance layer (within noise on the single and ±20 cm layouts, slightly
-worse on ±17 cm) and triples the policy-call latency. The remaining failures are state OOD, not collisions: after the
-detour the robot is in a state the policy never saw and it loses the task.
-They are not action-level off-manifold errors (re-sampling on the policy's manifold did not recover them), so the
-only remedy is to bring the robot back to a state the policy knows. Given the latency cost, we deploy the guidance
-layer without CAR.
+
+**Conclusion.** steering during inference-time are easy lead to State OOD. Action off-manifold correction method generally won't help (re-sampling on the policy's manifold or pull back), The only remedy is to bring the robot back to a state the policy knows. Most tasks don't don't have strong conflict, also Given the latency cost, we suggest deploy the guidance layer without CAR.
