@@ -23,8 +23,9 @@ The setup has two components:
    rate. The correction term fixes some corner cases of off-manifold drift but adds a lot of latency, so
    guidance alone is usually the right choice.
 
-We evaluate on LIBERO with the two constraints (static pillars, a moving human arm) for pi0.5 and GR00T N1.7
-(see [Results](#-results)).
+We evaluate the layer on LIBERO with pi0.5 and GR00T N1.7 under the two example constraints: (1) static obstacles, i.e.
+pillars placed on the robot's path, and (2) a dynamic obstacle, i.e. a human arm moving through the workspace (see
+[Results](#-results)).
 
 ---
 
