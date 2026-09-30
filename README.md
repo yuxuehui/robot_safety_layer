@@ -13,9 +13,9 @@ observation ──► frozen flow policy ──► safety layer ──► safe a
 Evaluated on LIBERO with two constraints (static pillars, a moving human arm) for pi0.5 and GR00T N1.7 (Step 3).
 
 ```
-safeguide/     the safety layer (package)        examples/     porting templates: policy, robot, scene, cost, control loop
-benchmarks/    LIBERO evaluator, scene glue,     scripts/      job launchers for the lab pod (pod-specific paths)
-               calibration, paired statistics    demo/         demo recordings and videos
+safeguide/     the safety layer (pip install -e .)
+examples/      porting templates: policy adapter, robot model, scene, custom cost, control loop
+benchmarks/    the LIBERO evaluator used for the results below (pillars, moving hand, action-gain calibration)
 ```
 
 **Porting to another policy, simulator or real robot** means implementing one of four small interfaces
@@ -207,8 +207,8 @@ python benchmarks/eval_obstacle.py --policy groot --groot_port 5561 --replan_ste
     --calib runs/baseline_groot/libero_spatial/action_model_calibration.npz --out runs/groot_gate17
 ```
 
-`scripts/groot_servers.sh` starts the four servers used in Step 3; `scripts/groot_patch_ckpt.sh` makes the public
-LIBERO checkpoints loadable with a local Qwen3-VL backbone.
+The public `nvidia/GR00T-N1.7-LIBERO` checkpoints need their backbone path pointed at a local Qwen3-VL-2B-Instruct
+copy (`config.json` `model_name` and `processor_config.json` `processor_kwargs.model_name`).
 
 ---
 
@@ -245,6 +245,5 @@ detour the robot is in a state the frozen policy never saw and it does not compl
 `benchmarks/guidance.py` for reference, `--guidance car`) does not change the outcome and triples the latency, so
 none of the commands above enable it.
 
-The tables are produced by `benchmarks/obs7_analysis.py` (paired tests);
-side-by-side videos (frozen policy | + safety layer [| + CAR], with a top-view overlay of the guidance push) by
-`demo/compose_video.py` from `--record` runs.
+`benchmarks/eval_obstacle.py` writes one JSON line per episode (outcome, contact steps, min clearance, per-chunk
+logs); the tables above are paired McNemar tests over those records.
