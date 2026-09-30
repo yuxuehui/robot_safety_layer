@@ -222,7 +222,7 @@ with the obstacle; *violation* = any contact; the remainder did not complete the
 |---|---|---|---|---|
 | Static: two pillars, gate ±17 cm | 207 | 55.1 % / 44.0 % | **73.9 % / 16.4 %** | 0.29 → 0.32 s |
 | Static: two pillars, gate ±20 cm | 261 | 68.6 % / 29.9 % | **76.6 % / 10.0 %** | 0.33 → 0.34 s |
-| Static: one pillar on the grasp path | 408 | 0.0 % / 100 % | 12.5 % / 20.8 % | 0.47 → 0.71 s |
+| Static: one pillar on the grasp path | 408 | 0.0 % / 100 % | **12.5 % / 20.8 %** | 0.47 → 0.71 s |
 | Dynamic: hand sweeping across the workspace | 295 | 4.1 % / 95.9 % | **44.7 % / 16.9 %** | 0.38 → 0.48 s |
 | Dynamic: hand reaching for the same object | 295 | 2.0 % / 98.0 % | **39.3 % / 3.7 %** | 0.37 → 0.44 s |
 
@@ -233,7 +233,7 @@ with the obstacle; *violation* = any contact; the remainder did not complete the
 |---|---|---|---|
 | Static: gate ±17 cm | 210 | 58.1 % / 41.4 % | **64.3 % / 15.2 %** |
 | Static: gate ±20 cm | 258 | 66.7 % / 30.6 % | **73.3 % / 14.3 %** |
-| Static: one pillar | 402 | 0.0 % / 99.5 % | 7.5 % / 11.4 % |
+| Static: one pillar | 402 | 0.0 % / 99.5 % | **7.5 % / 11.4 %**|
 | Dynamic: hand sweeping | 586 | 4.3 % / 95.2 % | **15.2 % / 19.1 %** |
 | Dynamic: hand reaching | 583 | 2.2 % / 97.4 % | **16.6 % / 4.3 %** |
 
