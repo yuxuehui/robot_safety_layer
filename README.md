@@ -20,7 +20,7 @@ benchmarks/    the LIBERO evaluator used for the results below (pillars, moving 
 
 ---
 
-## Step 1 — Constraint functions
+## 🧱 Step 1 — Constraint functions
 
 A constraint is a cost `J(â)` on the **clean action chunk estimate** `â` (H steps of the policy's action space).
 The layer turns `â` into world-frame geometry through two fixed pieces and then applies the constraint:
@@ -118,7 +118,7 @@ carries the margins, `d_safe`, `cbf_vref` and the executed-prefix length; `T` th
 
 ---
 
-## Step 2 — Incorporating the safety layer into a flow policy
+## 🛡️ Step 2 — Incorporating the safety layer into a flow policy
 
 The policy's sampler integrates a velocity field `v_θ(x_t, t | obs)` from noise to the action chunk. The layer
 wraps that loop (Algorithm 1). `t` runs in the policy's own convention (`FlowSpec`: 1→0 for openpi, 0→1 for GR00T);
@@ -205,7 +205,7 @@ copy (`config.json` `model_name` and `processor_config.json` `processor_kwargs.m
 
 ---
 
-## Step 3 — Results
+## 📊 Results
 
 LIBERO-spatial + LIBERO-object, obstacles placed on the frozen policy's own path (unseen in training), 3 noise seeds,
 paired episodes (same placement and seed for every arm). *Safe success* = task completed with no physics contact
