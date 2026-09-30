@@ -162,7 +162,7 @@ for episode in episodes:
 variants (steer / oc / car / mppi) through the legacy `guidance.GuidedSampler`, which imports its cost primitives from
 `safeguide.core.cost` so both share one definition of clearance and cost.
 
-## Equivalence check (2026-09-30, pod3, libero_object task 0, seed 0)
+## Equivalence check (2026-09-30, libero_object task 0, seed 0)
 
 `eqv_compare.py` compares two run dirs episode by episode (result records + executed action / EEF trajectories).
 
@@ -188,12 +188,14 @@ benchmarks/eval_obstacle.py --policy groot               safeguide/server/groot_
 ```
 
 ```bash
-# server (GR00T venv), one per checkpoint / guidance mode
-cd $WS/0Xuehui/Isaac-GR00T && PYTHONPATH=$PROJ CUDA_VISIBLE_DEVICES=0 uv run --no-sync python \
-    $PROJ/safeguide/server/groot_server.py --model-path checkpoints/GR00T-N1.7-LIBERO/libero_spatial --port 5556 --guidance g1
-# obstacle-free baselines (needed for pillar / hand placement and for calibrating G), then the benchmark
-.venv/bin/python ../benchmarks/eval_libero.py --policy groot --groot_port 5556 --suite libero_spatial --replan_steps 8 --out ../runs/baseline_groot
-.venv/bin/python ../benchmarks/eval_obstacle.py --policy groot --groot_port 5556 --baseline_dir ../runs/baseline_groot --replan_steps 8 ...
+# server (GR00T environment), one per checkpoint / guidance mode. <repo> = this repository's root,
+# <groot> = your Isaac-GR00T checkout, <ckpt> = a nvidia/GR00T-N1.7-LIBERO/<suite> checkpoint directory
+cd <groot> && PYTHONPATH=<repo> CUDA_VISIBLE_DEVICES=0 uv run python \
+    <repo>/safeguide/server/groot_server.py --model-path <ckpt> --port 5556 --guidance g1
+# evaluator environment, from <repo>: obstacle-free baselines (needed for pillar / hand placement and for
+# calibrating G), then the benchmark
+python benchmarks/eval_libero.py --policy groot --groot_port 5556 --suite libero_spatial --replan_steps 8 --out runs/baseline_groot
+python benchmarks/eval_obstacle.py --policy groot --groot_port 5556 --baseline_dir runs/baseline_groot --replan_steps 8 ...
 ```
 
 Facts about the LIBERO checkpoints (`nvidia/GR00T-N1.7-LIBERO/<suite>`, read from the config and the source): action

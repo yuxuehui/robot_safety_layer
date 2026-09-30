@@ -3,8 +3,8 @@
 Written against the official repo at github.com/NVIDIA/Isaac-GR00T, main branch, gr00t/model/gr00t_n1d7/gr00t_n1d7.py
 (cloned 2026-09-30). velocity() reproduces one iteration of Gr00tN1d7ActionHead.get_action_with_features; prepare()
 is Gr00tN1d7ActionHead._encode_features (vlln + VL self-attention on the backbone features, state tokens), computed once
-per chunk exactly as the model does. Status: adapter code mirrors the source line by line but has NOT yet been run
-against a checkpoint (environment install in progress on pod3).
+per chunk exactly as the model does. Verified on the nvidia/GR00T-N1.7-LIBERO checkpoints (2026-09-30): the unguided
+path reproduces the checkpoint's own sampler, and the guided runs are the GR00T rows of the README results.
 
 N1.7 flow convention (forward()):  x_t = (1 - t) noise + t actions,  v = actions - noise,  t: 0 -> 1 in
 num_inference_timesteps (4) Euler steps of dt = 1/N; the network receives the time as an integer bucket

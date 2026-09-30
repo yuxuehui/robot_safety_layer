@@ -4,9 +4,10 @@ Runs inside the Isaac-GR00T uv venv (Python 3.12); the evaluator (any Python) ta
 safeguide.remote.RemoteGuidedPolicy. Per call the client sends the observation and the chunk cost context; the
 server runs Gr00tPolicy.get_action with the action head's denoising loop replaced by the safeguide Guide.
 
-  cd $WS/0Xuehui/Isaac-GR00T
-  PYTHONPATH=$PROJ CUDA_VISIBLE_DEVICES=0 uv run python $PROJ/safeguide/server/groot_server.py \\
-      --model-path checkpoints/GR00T-N1.7-LIBERO/libero_spatial --port 5556 --guidance g1
+  cd <Isaac-GR00T checkout>
+  PYTHONPATH=<robot_safety_layer checkout> CUDA_VISIBLE_DEVICES=0 uv run python \\
+      <robot_safety_layer checkout>/safeguide/server/groot_server.py \\
+      --model-path <GR00T-N1.7-LIBERO/<suite> checkpoint dir> --port 5556 --guidance g1
 """
 import argparse
 import sys
@@ -29,7 +30,6 @@ def main():
     ap.add_argument("--schedule", default="const")
     ap.add_argument("--num-steps", type=int, default=None, help="Euler steps (default: the checkpoint's num_inference_timesteps)")
     ap.add_argument("--strict", type=int, default=1)
-    ap.add_argument("--rec_B", type=int, default=16)
     args = ap.parse_args()
 
     from gr00t.policy.gr00t_policy import Gr00tPolicy

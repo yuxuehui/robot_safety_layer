@@ -6,9 +6,10 @@ fraction of the path's horizontal arc length, shifted sideways by --offset
 (0 = directly on the path). Placements too close to task objects / the start pose,
 or where the path already passes above the pillar top, are rejected.
 
-Usage (from openpi/, env.sh sourced, PYTHONPATH += $PROJ):
-  .venv/bin/python ../benchmarks/eval_obstacle.py --suite libero_spatial --tasks 0-4 --episodes 10 --guidance none
-  .venv/bin/python ../benchmarks/eval_obstacle.py ... --guidance g1 --scale 1.0
+Usage (from the repository root, `pip install -e .` done, openpi and LIBERO installed):
+  python benchmarks/eval_obstacle.py --suite libero_spatial --tasks 0-4 --episodes 10 --guidance none
+  python benchmarks/eval_obstacle.py ... --guidance g1 --scale 1.0 --calib runs/baseline/libero_spatial/action_model_calibration.npz
+Obstacle-free baseline rollouts (eval_libero.py, --baseline_dir, default runs/baseline) must exist first.
 """
 import argparse
 import collections
@@ -155,7 +156,7 @@ def main():
     ap.add_argument("--num_steps_wait", type=int, default=10)
     ap.add_argument("--resize", type=int, default=224)
     ap.add_argument("--checkpoint", default=None)
-    ap.add_argument("--baseline_dir", default="../runs/baseline")
+    ap.add_argument("--baseline_dir", default="runs/baseline", help="obstacle-free rollouts from eval_libero.py")
     # obstacle
     ap.add_argument("--radius", type=float, default=0.025)
     ap.add_argument("--height", type=float, default=0.30)

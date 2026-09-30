@@ -7,8 +7,10 @@ examples/libero/main.py (same preprocessing, replan_steps, max_steps, wait steps
 Per episode it also stores (eef_pos, eef_quat, action) at every control step so the
 action -> EEF displacement model used by the guidance cost can be calibrated.
 
-Usage (from openpi/ with env.sh sourced):
-  CUDA_VISIBLE_DEVICES=0 .venv/bin/python ../benchmarks/eval_libero.py --suite libero_spatial --tasks 0-4 --episodes 10
+Usage (from the repository root, in an environment with openpi and LIBERO installed):
+  CUDA_VISIBLE_DEVICES=0 python benchmarks/eval_libero.py --suite libero_spatial --tasks 0-4 --episodes 10
+The pi0.5 checkpoint defaults to $OPENPI_DATA_HOME/openpi-assets/checkpoints/pi05_libero_pytorch (openpi's own
+download location); pass --checkpoint to use another one.
 """
 import argparse
 import collections
