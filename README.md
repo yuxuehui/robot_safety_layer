@@ -255,7 +255,9 @@ back and forth, and never returns to the task.
 
 ### (2) Guidance alone vs. guidance + CAR correction
 
-The off-manifold correction term (CAR, Step 2) can help with some action-level off-manifold errors, pull back to datamanifold / re-sampling on the policy's manifold, can help recover.
+The off-manifold correction term (CAR, Step 2) targets action-level errors: naively steering the velocity can push
+the action chunk off the policy's data manifold, and CAR pulls it back (equivalently, re-sampling on the policy's
+manifold). When the failure really is an off-manifold action, this recovers it:
 
 <p align="center"><img src="docs/results/pi05_guidance_vs_car_gate20.gif" width="100%"><br>
 <sub>Two pillars (gate ±20 cm). Left: frozen pi0.5; middle: + guidance; right: + guidance + CAR. Top-view inset: pillars, end-effector trail;
@@ -271,8 +273,17 @@ orange = guidance push in the current chunk, purple arrow = CAR correction (×3)
 | Gate ±20 cm — violation | 29.9 % | 10.0 % | **8.8 %** |
 | Policy-call latency | **0.29–0.47 s** | 0.32–0.71 s | 1.8–2.3 s |
 
-Some faliure cases:
-However, state OOD is the main cause of failure (the rest faulure is unsafe success, i.e., vliatte constraints). like the video, after action steer by guidance, the robot is in a state the policy never saw and it fails
+Paired episodes (placements × 3 seeds, LIBERO-spatial + LIBERO-object): single 408, gate ±17 cm 207, gate ±20 cm 261.
+CAR vs guidance on safe success (paired McNemar, wins/losses): single 16/11, p = 0.44; gate ±17 cm 2/12, p = 0.013;
+gate ±20 cm 4/6, p = 0.75.
 
+Such cases are rare, though. Across the benchmark the main cause of failure is **state OOD** (the rest are unsafe
+successes, i.e. constraint violations): as in the failure cases above, after the guidance has steered the arm around
+the obstacle the robot is in a state the policy never saw, and the policy loses the task. That is not an action-level
+error, so an action-level correction cannot fix it.
 
-**Conclusion.** steering during inference-time are easy lead to State OOD. Action off-manifold correction method generally won't help (re-sampling on the policy's manifold or pull back), The only remedy is to bring the robot back to a state the policy knows. Most tasks don't don't have strong conflict, also Given the latency cost, we suggest deploy the guidance layer without CAR.
+**Conclusion.** Steering a frozen policy at inference time easily leads to state OOD. Action-level off-manifold
+corrections (pulling back to, or re-sampling on, the policy's manifold) generally do not help with it; the only remedy
+is to bring the robot back to a state the policy knows. Most tasks show no strong conflict between the guidance and
+the policy in the first place, and CAR triples the policy-call latency, so we suggest deploying the guidance layer
+without CAR.
