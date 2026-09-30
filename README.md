@@ -1,12 +1,29 @@
 # robot_safety_layer
 
-A plug-in **safety layer for frozen flow-matching VLA policies** (pi0.5, GR00T N1.7). Runtime safety constraints
-are written as differentiable cost functions on the action chunk; at inference time the layer steers the policy's
-own denoising process away from constraint violations. No retraining, no gradient through the policy network.
+More and more robots are controlled by learning-based policies. How can we guarantee their safety at runtime?
+This repository is about the **safety of learning-based policies**.
+
+Our solution is a plug-in **safety layer for frozen flow-matching VLA policies** (e.g., pi0.5, GR00T N1.7). It acts
+at inference time and never changes the pretrained weights of the policy.
 
 ![Motivation and solution: a plug-in safety layer between the generative policy and the robot](docs/overview.png)
 
-Evaluated on LIBERO with two constraints (static pillars, a moving human arm) for pi0.5 and GR00T N1.7 (Step 3).
+The setup has two components:
+
+1. **Runtime safety constraints.** At inference time you define the constraints the robot must satisfy as
+   differentiable cost functions on the action chunk. We provide two examples: static obstacles (e.g., assets in the
+   environment) and dynamic obstacles (e.g., a human moving in the shared workspace). Details in
+   [Step 1 — Constraint functions](#-step-1--constraint-functions).
+2. **Your pretrained policy + our safety layer.** Details in
+   [Step 2 — Incorporating the safety layer into a flow policy](#%EF%B8%8F-step-2--incorporating-the-safety-layer-into-a-flow-policy).
+   The layer steers the output of the VLA policy by adding to its base velocity (1) a **guidance term** `g` from the
+   constraint cost and (2) optionally an **off-manifold correction term** `CAR`, because naively editing the action
+   can push it off the action manifold. In most environments the guidance term alone already raises the safe
+   success rate and lowers the violation rate; the correction term can fix some corner cases of off-manifold
+   drift but costs a lot of latency, so in most cases the guidance term alone is the right choice.
+
+We evaluate on LIBERO with the two constraints (static pillars, a moving human arm) for pi0.5 and GR00T N1.7
+([Results](#-results)).
 
 ```
 safeguide/     the safety layer (pip install -e .)
