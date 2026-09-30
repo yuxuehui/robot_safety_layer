@@ -14,9 +14,8 @@ Evaluated on LIBERO with two constraints (static pillars, a moving human arm) fo
 
 ```
 safeguide/     the safety layer (package)        examples/     porting templates: policy, robot, scene, cost, control loop
-benchmarks/    LIBERO evaluator, scene glue,     analysis/     paired statistics, diagnostics
-               calibration                       scripts/      job launchers for the lab pod (pod-specific paths)
-demo/          demo recordings and videos
+benchmarks/    LIBERO evaluator, scene glue,     scripts/      job launchers for the lab pod (pod-specific paths)
+               calibration, paired statistics    demo/         demo recordings and videos
 ```
 
 **Porting to another policy, simulator or real robot** means implementing one of four small interfaces
@@ -246,6 +245,6 @@ detour the robot is in a state the frozen policy never saw and it does not compl
 `benchmarks/guidance.py` for reference, `--guidance car`) does not change the outcome and triples the latency, so
 none of the commands above enable it.
 
-Analysis outputs are produced by `analysis/obs7_analysis.py` (paired tests) and `analysis/stall_diagnostics.py`;
+The tables are produced by `benchmarks/obs7_analysis.py` (paired tests);
 side-by-side videos (frozen policy | + safety layer [| + CAR], with a top-view overlay of the guidance push) by
 `demo/compose_video.py` from `--record` runs.

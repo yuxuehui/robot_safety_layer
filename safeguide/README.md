@@ -41,7 +41,7 @@ so that the policy's ordinary `infer(obs)` call runs `guide.run(obs)`; keep the 
 (4) `SupervisorConfig.exec_steps` = executed prefix length (5 of 10 for pi0.5, 8 of 16 for GR00T). (5) Fewer Euler
 steps mean fewer pushes per chunk: the same `scale = 1.0` worked for 10 and 4 steps, re-check on your model.
 (6) Regression: an unguided run through the installed layer (`GuideConfig(mode="none")`) must reproduce the model's
-own sampler bit for bit (`analysis/eqv_compare.py`).
+own sampler bit for bit (`benchmarks/eqv_compare.py`).
 
 **New simulator or real robot.** (1) One end-effector reference point, shared by `RobotModel.eef_pos()`, the action
 map and the scene frame. (2) Sphere model: gripper / hand spheres (margin 1.0 cm), the arm links that can reach the
