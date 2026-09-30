@@ -199,6 +199,19 @@ copy (`config.json` `model_name` and `processor_config.json` `processor_kwargs.m
 
 ## 📊 Results
 
+### Safety layer on pi0.5 and GR00T N1.7
+
+Each clip: left = frozen policy, right = frozen policy + safety layer, same task, same obstacle placement, same noise
+seed. Red border = physics contact with the obstacle; the timeline shows the gripper clearance.
+
+<table>
+<tr><td width="50%" align="center"><img src="docs/results/pi05_single.gif" width="100%"><br><sub>pi0.5 — one pillar on the grasp path</sub></td><td width="50%" align="center"><img src="docs/results/groot_single.gif" width="100%"><br><sub>GR00T N1.7 — one pillar on the grasp path</sub></td></tr>
+<tr><td width="50%" align="center"><img src="docs/results/pi05_gate17.gif" width="100%"><br><sub>pi0.5 — two pillars, gate ±17 cm</sub></td><td width="50%" align="center"><img src="docs/results/groot_gate17.gif" width="100%"><br><sub>GR00T N1.7 — two pillars, gate ±17 cm</sub></td></tr>
+<tr><td width="50%" align="center"><img src="docs/results/pi05_gate20.gif" width="100%"><br><sub>pi0.5 — two pillars, gate ±20 cm</sub></td><td width="50%" align="center"><img src="docs/results/groot_gate20.gif" width="100%"><br><sub>GR00T N1.7 — two pillars, gate ±20 cm</sub></td></tr>
+<tr><td width="50%" align="center"><img src="docs/results/pi05_hsweep.gif" width="100%"><br><sub>pi0.5 — human arm sweeping across the workspace</sub></td><td width="50%" align="center"><img src="docs/results/groot_hsweep.gif" width="100%"><br><sub>GR00T N1.7 — human arm sweeping across the workspace</sub></td></tr>
+<tr><td width="50%" align="center"><img src="docs/results/pi05_hreach.gif" width="100%"><br><sub>pi0.5 — human arm reaching for the same object</sub></td><td width="50%" align="center"><img src="docs/results/groot_hreach.gif" width="100%"><br><sub>GR00T N1.7 — human arm reaching for the same object</sub></td></tr>
+</table>
+
 LIBERO-spatial + LIBERO-object, obstacles placed on the frozen policy's own path (unseen in training), 3 noise seeds,
 paired episodes (same placement and seed for every arm). *Safe success* = task completed with no physics contact
 with the obstacle; *violation* = any contact; the remainder did not complete the task without contact.
@@ -213,6 +226,7 @@ with the obstacle; *violation* = any contact; the remainder did not complete the
 | Dynamic: hand sweeping across the workspace | 295 | 4.1 % / 95.9 % | **44.7 % / 16.9 %** | 0.38 → 0.48 s |
 | Dynamic: hand reaching for the same object | 295 | 2.0 % / 98.0 % | **39.3 % / 3.7 %** | 0.37 → 0.44 s |
 
+
 **GR00T N1.7** (4 Euler steps, replan every 8 steps, same constraints and margins, no re-tuning)
 
 | Constraint / layout | n | frozen GR00T (safe / violation) | + safety layer (safe / violation) |
@@ -223,11 +237,35 @@ with the obstacle; *violation* = any contact; the remainder did not complete the
 | Dynamic: hand sweeping | 586 | 4.3 % / 95.2 % | **15.2 % / 19.1 %** |
 | Dynamic: hand reaching | 583 | 2.2 % / 97.4 % | **16.6 % / 4.3 %** |
 
-Violations drop 3–25x under every constraint and for both policies. The residual failures are stalls: after the
-detour the robot is in a state the frozen policy never saw and it does not complete the task. Replanning every
-2 steps hurts (more push/pull cycles), every 8 is no better; a learned correction vector (CAR, kept in
-`benchmarks/guidance.py` for reference, `--guidance car`) does not change the outcome and triples the latency, so
-none of the commands above enable it.
 
-`benchmarks/eval_obstacle.py` writes one JSON line per episode (outcome, contact steps, min clearance, per-chunk
-logs); the tables above are paired McNemar tests over those records.
+Violations drop 3–25x under every constraint and for both policies. The residual failures are stalls: after the
+detour the robot is in a state the frozen policy never saw and it does not complete the task.
+
+### Guidance alone vs. guidance + CAR correction
+
+Does the optional off-manifold correction term (CAR, Step 2) help? Same protocol, pi0.5, three pillar layouts.
+
+<p align="center"><img src="docs/results/pi05_guidance_vs_car_gate20.gif" width="100%"><br>
+<sub>Two pillars (gate ±20 cm). Left: frozen pi0.5; middle: + guidance; right: + guidance + CAR. Top-view inset: pillars, end-effector trail;
+orange = guidance push in the current chunk, purple arrow = CAR correction (×3). In this seed guidance alone stalls after the detour (220 steps, no contact) and CAR completes the task in 111 steps.</sub></p>
+
+| | pi0.5 | + guidance | + guidance + CAR |
+|---|---|---|---|
+| Single obstacle — safe success | 0.0 % | 12.5 % | 13.7 % |
+| Single obstacle — violation | 100 % | 20.8 % | 20.1 % |
+| Gate ±17 cm — safe success | 55.1 % | 73.9 % | 69.1 % |
+| Gate ±17 cm — violation | 44.0 % | 16.4 % | 19.8 % |
+| Gate ±20 cm — safe success | 68.6 % | 76.6 % | 75.9 % |
+| Gate ±20 cm — violation | 29.9 % | 10.0 % | 8.8 % |
+| Policy-call latency | 0.29–0.47 s | 0.32–0.71 s | 1.8–2.3 s |
+
+Paired episodes (placements × 3 seeds, LIBERO-spatial + LIBERO-object): single 408, gate ±17 cm 207, gate ±20 cm 261.
+CAR vs guidance on safe success (paired McNemar, wins/losses): single 16/11, p = 0.44; gate ±17 cm 2/12, p = 0.013;
+gate ±20 cm 4/6, p = 0.75.
+
+**Conclusion.** CAR does not improve on the guidance layer (within noise on the single and ±20 cm layouts, slightly
+worse on ±17 cm) and triples the policy-call latency. The remaining failures are stalls, not collisions, and they are
+state-level out-of-distribution: after the detour the robot is in a state the policy never saw and it loses the task.
+They are not action-level off-manifold errors (re-sampling on the policy's manifold did not recover them), so the
+only remedy is to bring the robot back to a state the policy knows. Given the latency cost, we deploy the guidance
+layer without CAR.
