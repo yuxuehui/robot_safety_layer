@@ -34,36 +34,6 @@ def _smootherstep(x):
     return x * x * x * (x * (x * 6.0 - 15.0) + 10.0)
 
 
-class CarResidual(torch.nn.Module):
-    """g_psi(x_pos, t): velocity residual on the chunk's position dims, (B, H, 3) -> (B, H, 3).
-
-    Same role as UNetVectorResidual in the CAR ManiSkill code, whose input is the absolute waypoint
-    positions x[..., :3] (same frame as the obstacles) and t. Here x_t is a normalised delta-action,
-    so the input is the chunk's implied EEF waypoints relative to the pillars' mean centre (/0.1 m),
-    making g_psi a spatial field tied to the static obstacles as in the reference; the output stays a
-    velocity residual in normalised action space. Output layer zero-initialised, so before any training
-    step CAR reduces exactly to g^approx (= G1 with the a_hat gradient).
-    """
-
-    def __init__(self, horizon, hidden=256, n_freq=8):
-        super().__init__()
-        self.horizon = horizon
-        self.register_buffer("freqs", (2.0 ** torch.arange(n_freq)) * np.pi)
-        self.net = torch.nn.Sequential(
-            torch.nn.Linear(horizon * 3 + 2 * n_freq, hidden), torch.nn.SiLU(),
-            torch.nn.Linear(hidden, hidden), torch.nn.SiLU(),
-            torch.nn.Linear(hidden, horizon * 3),
-        )
-        torch.nn.init.zeros_(self.net[-1].weight)
-        torch.nn.init.zeros_(self.net[-1].bias)
-
-    def forward(self, x_pos, t):
-        B = x_pos.shape[0]
-        ang = t.view(B, 1).float() * self.freqs
-        h = torch.cat([x_pos.reshape(B, -1).float(), torch.sin(ang), torch.cos(ang)], dim=-1)
-        return self.net(h).view(B, self.horizon, 3)
-
-
 @dataclasses.dataclass
 class GuidanceConfig:
     mode: str = "g1"  # "g1" (in-the-loop guidance) | "bestofn" | "project" (post-hoc) | "none"
@@ -81,20 +51,15 @@ class GuidanceConfig:
     oc_reg: float = 0.0  # lambda in  J = Phi(x_final)/d_safe^2 + lambda * sum_k ||u_k||^2
     oc_decay: float = 1.0  # u <- decay*u - lr*g  (image-code OC used 0.995)
     oc_skip_if_safe: bool = True  # leave chunks whose unguided sample is already collision-free untouched
-    # "car": g^car = g^approx + w(conflict) * g_psi   (CAR guidance, ManiSkill reference config)
+    # "car": g^car = g^approx + w(conflict) * u   (CAR guidance with a learned correction vector u)
     car_batch: int = 64  # online_batch_size: guided rollouts per policy call for the g_psi update
     car_train_steps: int = 1  # online_train_steps per policy call
-    car_lr: float = 1e-3  # online_lr (Adam)
     car_thr: float = 0.15  # conflict_threshold
     car_temp: float = 0.1  # conflict_temperature
     car_reward_temp: float = 1.0  # reward_temp: w_b = softmax(r1 / tau)
-    car_w_obs: float = 1.0  # obstacle_reward_weight
     car_obs_scale: float = 0.5  # |energy_scales| per obstacle (reference config: [-0.5, -0.5])
     car_obs_sigma: float = 0.03  # m; energy = exp(-clearance^2 / sigma^2), bounded in [0, 1] like the reference
-    car_w_goal: float = 10.0  # goal_reward_weight (goal = end point of the unguided chunk)
-    car_goal_sigma: float = 0.05  # m (reference 0.5 in its own scene scale; chunk end points differ by cm here)
     car_corr_scale: float = 1.0  # learned_correction_scale
-    car_hidden: int = 256
     car_zero_thr: float = 0.0  # pillar counts in the conflict score only if its energy exp(-c^2/s^2) >= thr
                                # (reference zero_gradient_threshold; 0 = any non-zero gradient)
     # "steer, don't brake" (G1 a_hat branch): tail-only braking pushes become sideways detours, side latched
@@ -107,13 +72,11 @@ class GuidanceConfig:
     car_conflict: str = "pillars"  # "pillars" (reference) | "progress" | "both" (max of the two gates)
     car_prog_thr: float = 0.75  # progress gate threshold on kappa = (1 - cos(obstacle push, intent))/2
     car_explore: float = 0.0  # m per control step: lateral exploration of the training rollouts (xi ~ U(-1,1))
-    car_reward: str = "ref"  # "ref" (obstacle energy + goal) | "progress" (energy + progress - lateral deviation)
     car_w_obs2: float = 5.0  # progress reward: obstacle energy weight
     car_w_prog: float = 2.0  # progress reward: forward progress along the intent
     car_w_lat: float = 0.5  # progress reward: lateral deviation penalty (l / 0.15 m)^2
-    car_param: str = "mlp"  # "mlp": reference g_psi network, retrained per call | "vector": one constant action-space
-    # correction vector per episode; the reward-weighted matching loss then has the closed-form minimiser (weighted
-    # mean residual over gated steps), applied as an EMA across chunks so the correction accumulates over the episode
+    # the correction is one constant action-space vector u per episode: the reward-weighted velocity-matching loss then
+    # has a closed-form minimiser (weighted mean residual over gated steps), applied as an EMA across chunks
     car_vec_beta: float = 0.5  # EMA weight of the per-chunk closed-form solution
     # "mppi": sampling-based (gradient-free) trajectory optimisation of a low-dim steering control of the flow
     mppi_samples: int = 64  # rollouts per iteration (one batched flow integration)
@@ -438,18 +401,12 @@ class GuidedSampler:
         """Call at the start of every episode: g_psi is trained online within one episode only.
         CAR's training rollouts use their own RNG so the executed-chunk noise stream stays aligned
         with the other methods run with the same torch seed."""
-        self.car_net, self.car_opt, self.car_vec = None, None, None
+        self.car_vec = None
         self.latch = {}  # steer side latches are per episode too
         self.ep_vec = np.zeros(3)  # MPPI per-episode correction vector (world xyz displacement offset per step)
         self.escape_off = None  # deadlock escape: world-frame displacement offset per control step added to every flow step
         self.car_gen = torch.Generator(device="cuda" if torch.cuda.is_available() else "cpu")
         self.car_gen.manual_seed(int(seed) + 7919)
-
-    def _car_feat(self, x, ctx, T):
-        """g_psi input: implied EEF waypoints of chunk x relative to the pillars' mean centre, / 0.1 m."""
-        with torch.no_grad():
-            ref = T["obs_centers"].mean(0) if T["obs_centers"].shape[0] > 0 else T["cap_b"][:, 0].mean(0)
-            return (chunk_eef_positions(x, ctx, T) - ref) / 0.1
 
     def _car_gate(self, grads, valid=None):
         """Conflict score (1 - cos)/2 between per-pillar guidance directions, per (b, h), averaged
@@ -531,14 +488,8 @@ class GuidedSampler:
             gate = torch.maximum(gate, g_prog)
             conflict = torch.maximum(conflict, kappa * (nq > 1e-12))
         corr = torch.zeros_like(v)
-        r = None
-        if cfg.car_param == "vector":
-            if self.car_vec is not None:
-                r = self.car_vec.view(1, 1, 3).expand(B, H, 3)
-        elif self.car_net is not None:
-            tt = torch.full((B,), t, device=v.device)
-            r = self.car_net(self._car_feat(x_t, ctx, T), tt)  # (B, H, 3)
-        if r is not None:
+        if self.car_vec is not None:
+            r = self.car_vec.view(1, 1, 3).expand(B, H, 3)
             corr[..., :3] = (cfg.car_corr_scale * gate[..., None] * r).to(v.dtype)
             v_new = v_new + corr
         if explore is not None:
@@ -548,10 +499,9 @@ class GuidedSampler:
         return v_new, gate, conflict, costs
 
     def _car(self, noise, state, prefix_pad_masks, pkv, num_steps, ctx, T):
-        """CAR guidance (reference: CAR-guidance 3d_pc_robot_manipulation GCovGuidance, online_loss_type
-        'gradient'). Per policy call: (1) online update of g_psi on car_batch guided rollouts by
-        reward-weighted guidance matching restricted to conflict regions; (2) sample the executed
-        chunk with v + g^approx + gate * g_psi.
+        """CAR guidance with a learned correction vector u. Per policy call: (1) closed-form update of u on car_batch
+        guided rollouts by reward-weighted velocity matching restricted to conflict regions (EMA across chunks);
+        (2) sample the executed chunk with v + g^approx + gate * u.
 
         openpi time runs t: 1 (noise) -> 0 (data), x_t = t eps + (1-t) a, so the conditional
         velocity towards a rollout's end point a = x_final is  v_cond = (x_t - x_final) / t
@@ -565,11 +515,6 @@ class GuidedSampler:
         H = noise.shape[1]
         if getattr(self, "car_gen", None) is None:
             self.car_reset()
-        if cfg.car_param == "mlp":
-            if getattr(self, "car_net", None) is None:
-                self.car_net = CarResidual(H, cfg.car_hidden).to(device)
-            # fresh Adam on every policy call, as in the reference (train_model creates it per call)
-            self.car_opt = torch.optim.Adam(self.car_net.parameters(), lr=cfg.car_lr)
         extra = {}
 
         # goal for the task-progress reward: end point of an unguided chunk (the policy's intent)
@@ -586,7 +531,7 @@ class GuidedSampler:
             n3 = torch.stack([n_int[0], n_int[1], torch.zeros((), device=device)])
             n_act = torch.linalg.solve(T["G"].cpu(), n3.cpu()).to(device) * 2.0 / (T["q99"][:3] - T["q01"][:3] + 1e-6)
 
-        # (1) online g_psi update
+        # (1) closed-form update of the correction vector
         Bt = cfg.car_batch
         pkv_b = copy.deepcopy(pkv)
         pkv_b.batch_repeat_interleave(Bt)
@@ -599,31 +544,25 @@ class GuidedSampler:
             if cfg.car_explore > 0:
                 xi = torch.rand(Bt, generator=self.car_gen, device=device) * 2.0 - 1.0
                 explore = xi[:, None] * cfg.car_explore * n_act[None, :]  # (Bt, 3)
-            xs, vs, gates, ts, feats = [], [], [], [], []
+            xs, vs, gates, ts = [], [], [], []
             for k in range(num_steps):
                 t = 1.0 - k / num_steps
                 with torch.no_grad():
                     v = m.denoise_step(state_b, pad_b, pkv_b, x, torch.full((Bt,), t, device=device))
                     v_g, gate, _, _ = self._car_velocity(x, t, v, ctx, T, explore=explore)
                 xs.append(x[..., :3].float()); vs.append(v[..., :3].float()); gates.append(gate); ts.append(t)
-                feats.append(self._car_feat(x, ctx, T))
                 x = (x + dt * v_g).detach()
             x_final = x
             with torch.no_grad():
-                # reference terminal reward: -w_obs * sum_k |scale_k| * max_h energy_k(h) + w_goal * goal
+                # terminal reward: obstacle energy, progress along the policy's intent, lateral deviation from it
                 clear_kh = robot_clearance_per_step(x_final, ctx, T)  # (K, Bt, H)
                 energy = torch.exp(-clear_kh.clamp(min=0.0) ** 2 / cfg.car_obs_sigma**2)
-                r_obs = -(cfg.car_obs_scale * energy.amax(dim=-1)).sum(0)
                 p_end = chunk_eef_positions(x_final, ctx, T)[:, -1]
                 lat = ((p_end[:, :2] - p_goal[:2]) * n_int).sum(-1)  # lateral deviation from the unguided end point
-                if cfg.car_reward == "progress":
-                    prog = (((p_end[:, :2] - T["p0"][:2]) * d_int).sum(-1) / max(nD, 0.02)).clamp(-1.0, 1.0)
-                    w_prog = cfg.car_w_prog if nD >= 0.02 else 0.0  # min(prog, 1): overshoot is not rewarded
-                    r1 = (-cfg.car_w_obs2 * energy.amax(dim=-1).sum(0) + w_prog * prog
-                          - cfg.car_w_lat * (lat / 0.15) ** 2)
-                else:
-                    r_goal = torch.exp(-((p_end - p_goal) ** 2).sum(-1) / cfg.car_goal_sigma**2)
-                    r1 = cfg.car_w_obs * r_obs + cfg.car_w_goal * r_goal
+                prog = (((p_end[:, :2] - T["p0"][:2]) * d_int).sum(-1) / max(nD, 0.02)).clamp(-1.0, 1.0)
+                w_prog = cfg.car_w_prog if nD >= 0.02 else 0.0  # min(prog, 1): overshoot is not rewarded
+                r1 = (-cfg.car_w_obs2 * energy.amax(dim=-1).sum(0) + w_prog * prog
+                      - cfg.car_w_lat * (lat / 0.15) ** 2)
                 w_b = torch.softmax(r1 / cfg.car_reward_temp, dim=0)  # (Bt,)
                 ess_i, lat_i = float(1.0 / (w_b**2).sum()), 100 * float(lat.std())
             gate_all = torch.stack(gates)  # (N, Bt, H)
@@ -634,37 +573,26 @@ class GuidedSampler:
                 continue
             X = torch.stack(xs)  # (N, Bt, H, 3)
             V = torch.stack(vs)
-            Fx = torch.stack(feats)  # g_psi inputs at the stored states
             tvec = torch.tensor(ts, device=device).view(-1, 1, 1, 1)
             v_cond = (X - x_final[None, ..., :3].float()) / tvec
             N = X.shape[0]
-            if cfg.car_param == "vector":
-                # closed-form minimiser of the same reward-weighted matching loss for a constant vector, then EMA
-                with torch.no_grad():
-                    wgt = (gate_all[..., None] * w_b.view(1, Bt, 1, 1))  # (N, Bt, H, 1)
-                    vec_star = (wgt * (v_cond - V)).sum(dim=(0, 1, 2)) / (wgt.sum() + 1e-8)  # (3,)
-                    old_v = self.car_vec if self.car_vec is not None else torch.zeros_like(vec_star)
-                    self.car_vec = (1.0 - cfg.car_vec_beta) * old_v + cfg.car_vec_beta * vec_star
-                    pred = self.car_vec.view(1, 1, 1, 3) + V
-                    loss = ((pred - v_cond) ** 2 * wgt).sum() / (wgt.sum() * 3 + 1e-8)
-                extra["car_vec_norm"] = float(self.car_vec.norm())
-                extra["car_vec_star_norm"] = float(vec_star.norm())
-                # for visualisation: the vector in normalised action units and the world-frame displacement per control
-                # step it implies at full gate (v <- v + r moves the clean action by -t r, so the world direction is -G r)
-                extra["car_vec"] = [float(u) for u in self.car_vec]
-                if isinstance(T, dict) and "G" in T:
-                    Gm = T["G"].to(self.car_vec.device, self.car_vec.dtype)
-                    raw = self.car_vec * (T["q99"][:3] - T["q01"][:3]).to(self.car_vec) / 2.0  # normalised -> raw delta units
-                    extra["car_vec_world_cm"] = [float(u) for u in (-100.0 * Gm @ raw)]
-            else:
-                g_psi = self.car_net(Fx.reshape(N * Bt, H, 3), tvec.view(-1).repeat_interleave(Bt)).view(N, Bt, H, 3)
-                pred = g_psi + V
-                wgt = (gate_all[..., None] * w_b.view(1, Bt, 1, 1)).expand_as(pred)
-                loss = ((pred - v_cond) ** 2 * wgt).sum() / (wgt.sum() + 1e-8)
-                self.car_opt.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.car_net.parameters(), max_norm=1.0)
-                self.car_opt.step()
+            # closed-form minimiser of the reward-weighted velocity-matching loss for a constant vector, then EMA
+            with torch.no_grad():
+                wgt = (gate_all[..., None] * w_b.view(1, Bt, 1, 1))  # (N, Bt, H, 1)
+                vec_star = (wgt * (v_cond - V)).sum(dim=(0, 1, 2)) / (wgt.sum() + 1e-8)  # (3,)
+                old_v = self.car_vec if self.car_vec is not None else torch.zeros_like(vec_star)
+                self.car_vec = (1.0 - cfg.car_vec_beta) * old_v + cfg.car_vec_beta * vec_star
+                pred = self.car_vec.view(1, 1, 1, 3) + V
+                loss = ((pred - v_cond) ** 2 * wgt).sum() / (wgt.sum() * 3 + 1e-8)
+            extra["car_vec_norm"] = float(self.car_vec.norm())
+            extra["car_vec_star_norm"] = float(vec_star.norm())
+            # for visualisation: the vector in normalised action units and the world-frame displacement per control
+            # step it implies at full gate (v <- v + r moves the clean action by -t r, so the world direction is -G r)
+            extra["car_vec"] = [float(u) for u in self.car_vec]
+            if isinstance(T, dict) and "G" in T:
+                Gm = T["G"].to(self.car_vec.device, self.car_vec.dtype)
+                raw = self.car_vec * (T["q99"][:3] - T["q01"][:3]).to(self.car_vec) / 2.0  # normalised -> raw delta units
+                extra["car_vec_world_cm"] = [float(u) for u in (-100.0 * Gm @ raw)]
             extra["car_loss"] = float(loss)
             extra["car_ess"], extra["car_lat_spread_cm"] = ess_i, lat_i  # logged for trained steps only
         del pkv_b

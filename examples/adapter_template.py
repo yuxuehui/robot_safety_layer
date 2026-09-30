@@ -48,10 +48,6 @@ class MyPolicyAdapter(FlowPolicyAdapter):
         #      Called under torch.no_grad() unless GuideConfig.grad_through_model is set (then it must be differentiable).
         return self.policy.velocity(cond, x_t, t)
 
-    def expand_cond(self, cond, batch_size):
-        # Only needed for batched candidate sampling (recovery / on-manifold options); raise if unsupported.
-        raise NotImplementedError
-
     def action_map(self):
         return self._map
 

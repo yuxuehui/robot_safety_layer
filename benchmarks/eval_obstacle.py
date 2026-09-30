@@ -191,37 +191,6 @@ def main():
     ap.add_argument("--escape_min_disp", type=float, default=0.02)
     ap.add_argument("--escape_lift", type=float, default=0.015, help="m per control step of upward offset during an escape")
     ap.add_argument("--escape_len", type=int, default=2, help="chunks per escape")
-    ap.add_argument("--escape_mode", default="disp", choices=["disp", "intent", "window"],
-                    help="deadlock gate: disp (pi0.5 default), intent collapse, or window (no net progress over escape_chunks chunks while oscillating)")
-    ap.add_argument("--escape_ratio", type=float, default=2.0, help="window mode: path length / net displacement over the window")
-    ap.add_argument("--escape_intent", type=float, default=0.04, help="intent mode: median policy intent per chunk (m) below which the policy counts as stalled")
-    ap.add_argument("--escape_clear", type=float, default=0.0, help="intent mode: gate only when all obstacles are farther than this (m) from the robot now (0 = ignore)")
-    ap.add_argument("--recovery", type=int, default=0, help="1: gated learned correction vector fitted on the server from a one-chunk reward; "
-                    "2: gated correction chosen by a simulator-branching lookahead (execute each candidate's first K steps in a branched sim, score the policy's reaction)")
-    ap.add_argument("--la_B", type=int, default=8)
-    ap.add_argument("--la_sigma", type=float, default=0.03)
-    ap.add_argument("--la_umax", type=float, default=0.03)
-    ap.add_argument("--la_tau", type=float, default=0.5)
-    ap.add_argument("--la_beta", type=float, default=0.5)
-    ap.add_argument("--la_w_int", type=float, default=3.0, help="lookahead reward: policy intent (m) at the branched state")
-    ap.add_argument("--la_w_move", type=float, default=0.5)
-    ap.add_argument("--la_w_obj", type=float, default=0.3)
-    ap.add_argument("--la_w_cost", type=float, default=1.0, help="lookahead reward: penalty on the candidate chunk's own barrier cost / d_safe^2")
-    ap.add_argument("--la_w_hit", type=float, default=5.0, help="lookahead reward: penalty per contact step in the branch")
-    ap.add_argument("--la_w_clr", type=float, default=1.0)
-    ap.add_argument("--la_horizon", type=int, default=1, help="lookahead: chunks executed in each branch before scoring (the offset persists through the flow in chunk 2+)")
-    ap.add_argument("--la_discrete", type=int, default=0, help="1: add discrete candidate directions (towards / away from the object, lateral, up, and combinations) at u_max and u_max/2")
-    ap.add_argument("--onmanifold_n", type=int, default=0, help="on-manifold first: N unguided policy samples, execute a safe one if any (no push)")
-    ap.add_argument("--project_tau", type=float, default=0.0, help="restart projection level after the pushed fallback (re-noise to tau, denoise again); 0 = off")
-    ap.add_argument("--la_exec", default="best", choices=["best", "mean"],
-                    help="best: execute the best-scoring candidate chunk itself (on-manifold by construction); mean: re-sample with the softmax-weighted offset")
-    ap.add_argument("--rec_B", type=int, default=16)
-    ap.add_argument("--rec_sigma", type=float, default=0.03)
-    ap.add_argument("--rec_tau", type=float, default=0.5)
-    ap.add_argument("--rec_w_obj", type=float, default=1.0)
-    ap.add_argument("--rec_w_move", type=float, default=0.5)
-    ap.add_argument("--rec_beta", type=float, default=0.5)
-    ap.add_argument("--rec_hold", type=int, default=1)
     ap.add_argument("--margin_obj", type=float, default=None, help="CBF/hinge margin for held-object spheres (default: margin_grip)")
     # guidance
     ap.add_argument("--guidance", default="none", choices=["none", "g1", "bestofn", "project", "oc", "car", "mppi"])
@@ -235,13 +204,9 @@ def main():
     ap.add_argument("--oc_decay", type=float, default=1.0, help="oc: u <- decay*u - lr*g")
     ap.add_argument("--car_batch", type=int, default=64)
     ap.add_argument("--car_train_steps", type=int, default=1)
-    ap.add_argument("--car_lr", type=float, default=1e-3)
     ap.add_argument("--car_thr", type=float, default=0.15)
     ap.add_argument("--car_temp", type=float, default=0.1)
     ap.add_argument("--car_reward_temp", type=float, default=1.0)
-    ap.add_argument("--car_w_obs", type=float, default=1.0)
-    ap.add_argument("--car_w_goal", type=float, default=10.0)
-    ap.add_argument("--car_goal_sigma", type=float, default=0.05)
     ap.add_argument("--car_obs_sigma", type=float, default=0.03)
     ap.add_argument("--grad_through_model", type=int, default=1)
     ap.add_argument("--schedule", default="const")
@@ -260,7 +225,6 @@ def main():
     ap.add_argument("--car_conflict", default="pillars", choices=["pillars", "progress", "both"])
     ap.add_argument("--car_prog_thr", type=float, default=0.75)
     ap.add_argument("--car_explore", type=float, default=0.0)
-    ap.add_argument("--car_reward", default="ref", choices=["ref", "progress"])
     ap.add_argument("--car_w_obs2", type=float, default=5.0)
     ap.add_argument("--car_w_prog", type=float, default=2.0)
     ap.add_argument("--car_w_lat", type=float, default=0.5)
@@ -271,7 +235,6 @@ def main():
     ap.add_argument("--mppi_w_prog", type=float, default=1.0)
     ap.add_argument("--mppi_w_ctrl", type=float, default=0.05)
     ap.add_argument("--mppi_w_obs", type=float, default=1.0)
-    ap.add_argument("--car_param", default="mlp", choices=["mlp", "vector"])
     ap.add_argument("--car_vec_beta", type=float, default=0.5)
     ap.add_argument("--mppi_persist", type=float, default=0.0, help="MPPI per-episode correction vector EMA weight (0 = off)")
     ap.add_argument("--mppi_persist_decay", type=float, default=0.8)
@@ -312,13 +275,8 @@ def main():
         policy = None
         sampler = adapter = sg.RemoteGuidedPolicy(args.groot_host, args.groot_port, G)
         sampler.scale = args.scale  # the server applies this push size to this client's calls
-        sampler.onm_n, sampler.proj_tau = args.onmanifold_n, args.project_tau
         if sampler.info.get("guidance") != args.guidance:
             raise SystemExit(f"GR00T server runs guidance={sampler.info.get('guidance')!r} but --guidance {args.guidance}")
-        if args.recovery == 1 and not sampler.info.get("recovery"):
-            raise SystemExit("--recovery 1 needs a GR00T server started with --recovery 1")
-        if args.recovery == 2 and args.policy != "groot":
-            raise SystemExit("--recovery 2 (lookahead) is implemented for --policy groot")
         engine = f"remote-safeguide ({sampler.info.get('model_path')}, guidance {args.guidance}, chunk {sampler.action_horizon}/{sampler.model_horizon})"
     else:
         policy = policy_config.create_trained_policy(_config.get_config("pi05_libero"), ckpt)
@@ -329,32 +287,27 @@ def main():
                                  schedule=args.schedule, t_min=args.t_min, n_samples=args.n_samples,
                                  project_steps=args.project_steps, project_lr=args.project_lr,
                                  oc_iters=args.oc_iters, oc_lr=args.oc_lr, oc_reg=args.oc_reg, oc_decay=args.oc_decay,
-                                 car_batch=args.car_batch, car_train_steps=args.car_train_steps, car_lr=args.car_lr,
+                                 car_batch=args.car_batch, car_train_steps=args.car_train_steps,
                                  car_thr=args.car_thr, car_temp=args.car_temp, car_reward_temp=args.car_reward_temp,
-                                 car_w_obs=args.car_w_obs, car_w_goal=args.car_w_goal, car_goal_sigma=args.car_goal_sigma,
                                  car_obs_sigma=args.car_obs_sigma, car_zero_thr=args.car_zero_thr,
                                  steer=args.steer, steer_release=args.steer_release, steer_forget=args.steer_forget,
                                  trigger_exec_only=args.trigger_exec_only,
                                  car_conflict=args.car_conflict, car_prog_thr=args.car_prog_thr, car_explore=args.car_explore,
-                                 car_reward=args.car_reward, car_w_obs2=args.car_w_obs2, car_w_prog=args.car_w_prog,
+                                 car_w_obs2=args.car_w_obs2, car_w_prog=args.car_w_prog,
                                  car_w_lat=args.car_w_lat, mppi_samples=args.mppi_samples, mppi_iters=args.mppi_iters,
                                  mppi_sigma=args.mppi_sigma, mppi_lambda=args.mppi_lambda, mppi_w_prog=args.mppi_w_prog,
                                  mppi_w_ctrl=args.mppi_w_ctrl, mppi_w_dev=args.mppi_w_dev, mppi_ramp=bool(args.mppi_ramp), mppi_w_obs=args.mppi_w_obs,
                                  mppi_persist=args.mppi_persist, mppi_persist_decay=args.mppi_persist_decay,
-                                 car_param=args.car_param, car_vec_beta=args.car_vec_beta)
+                                 car_vec_beta=args.car_vec_beta)
         engine = args.engine
         if engine == "auto":
             engine = "safeguide" if args.guidance in ("none", "g1") and not args.steer else "legacy"
         adapter = sg.Pi05Adapter(policy, norm_stats, G)
         if engine == "safeguide":
-            from safeguide.core.recovery import RecoveryConfig
-            rec = RecoveryConfig(B=args.rec_B, sigma=args.rec_sigma, tau=args.rec_tau, w_obj=args.rec_w_obj, w_move=args.rec_w_move,
-                                 beta=args.rec_beta, hold=args.rec_hold) if args.recovery else None
             sampler = sg.Guide(adapter, sg.GuideConfig(mode=args.guidance, scale=args.scale,
                                                        grad_through_model=bool(args.grad_through_model),
                                                        t_min=args.t_min, schedule=args.schedule,
-                                                       trigger_exec_only=args.trigger_exec_only,
-                                                       onmanifold_n=args.onmanifold_n, project_tau=args.project_tau), recovery=rec)
+                                                       trigger_exec_only=args.trigger_exec_only))
             adapter.install(sampler)
         else:
             sampler = gd.install_guidance(policy, gcfg)
@@ -365,9 +318,7 @@ def main():
         cbf_gamma=args.cbf_gamma, cbf_vref=args.cbf_vref, include_arm=(args.robot_model == "gripper+arm"),
         arm_motion=args.arm_motion, model_object=bool(args.model_object), arm_release=bool(args.arm_release),
         arm_margin_post=args.arm_margin_post, release_hyst=args.release_hyst, escape_chunks=args.escape_chunks,
-        escape_min_disp=args.escape_min_disp, escape_lift=args.escape_lift, escape_len=args.escape_len,
-        escape_mode=args.escape_mode, escape_intent=args.escape_intent, escape_clear=args.escape_clear, escape_ratio=args.escape_ratio,
-        recovery=bool(args.recovery))
+        escape_min_disp=args.escape_min_disp, escape_lift=args.escape_lift, escape_len=args.escape_len)
     json.dump({**vars(args), "G": np.asarray(G).tolist()}, open(out / "args.json", "w"), indent=1)
     print("action->EEF gain G:", np.asarray(G).round(4).tolist(), "| robot model:", args.robot_model, flush=True)
 
@@ -466,7 +417,7 @@ def main():
                 sampler.car_reset(seed=(args.torch_seed or 0) * 100003 + task_id * 1000 + ep)  # g_psi trained per episode
             if hasattr(sampler, "reset_episode"):
                 if args.torch_seed is not None:
-                    sampler.reset_episode(seed=s)  # GR00T: the noise is drawn on the server; both: seeds the recovery candidates
+                    sampler.reset_episode(seed=s)  # GR00T: the noise is drawn on the server
                 else:
                     sampler.reset_episode()
             pillar_hits = [0] * len(xys)
@@ -514,77 +465,7 @@ def main():
                      if hand_mode else ob.PillarScene(env))
             sup = sg.Supervisor(robot, scene, adapter.action_map(), sup_cfg, horizon=adapter.action_horizon)
             sup.reset(None if gate_c is None else (gate_c, gate_d, gate_off))
-            la_u, la_hold = None, 0  # lookahead recovery state (--recovery 2)
 
-            def lookahead(gobs, gripper_closed):
-                """Branch the simulator: execute the first K steps of each candidate chunk, ask the policy at the branched
-                state (its intent = reaction), score, restore. Returns the softmax-weighted offset and diagnostics."""
-                sim_ = env.env.sim
-                st = sim_.get_state()
-                ts = env.env.timestep
-                p0 = ob.eef_pos(env)
-                objs = np.array(list(object_xy(env).values()))
-                cands_in = None
-                if args.la_discrete:
-                    rng_ = np.random.default_rng(int(1000 * t + 17 * (args.torch_seed or 0)))
-                    if len(objs):
-                        d_ = objs[np.argmin(np.linalg.norm(objs - p0[:2], axis=1))] - p0[:2]
-                        f_ = np.array([d_[0], d_[1], 0.0]) / (np.linalg.norm(d_) + 1e-9)
-                    else:
-                        f_ = np.array([1.0, 0.0, 0.0])
-                    n_ = np.array([-f_[1], f_[0], 0.0]); z_ = np.array([0.0, 0.0, 1.0])
-                    dirs = [f_, -f_, n_, -n_, z_, -f_ + z_, n_ + z_, -n_ + z_, f_ + z_, -f_ + n_, -f_ - n_]
-                    disc = [np.zeros(3)] + [args.la_umax * d / np.linalg.norm(d) for d in dirs] + [0.5 * args.la_umax * d / np.linalg.norm(d) for d in dirs]
-                    n_rand = max(args.la_B - len(disc), 0)
-                    rand = (np.zeros(3) if la_u is None else la_u) + args.la_sigma * rng_.standard_normal((n_rand, 3))
-                    cands_in = np.concatenate([np.array(disc), rand], axis=0)
-                cands, chunks, c_cost, c_clr = sampler.candidates(gobs, u0=la_u, B=args.la_B, sigma=args.la_sigma, u_max=args.la_umax, cands_in=cands_in)
-                rewards, diag = [], []
-                for b in range(len(cands)):
-                    sim_.set_state(st); sim_.forward(); env.env.timestep = ts
-                    hits, a_last = 0, None
-                    for k in range(min(args.replan_steps, len(chunks[b]))):
-                        a_last = sg.remote.libero_action(chunks[b][k:k + 1])[0]
-                        obs_b, _, _, _ = env.step(a_last.tolist())
-                        hits += int(bool(ob.obstacle_contacts(env)))
-                    for _h in range(args.la_horizon - 1):  # further chunks with the same offset persisting through the flow
-                        ctx_b = sup.peek_ctx(bool(a_last[6] > 0))
-                        sampler.ctx, sampler.gate, sampler.rec_u = ctx_b, False, cands[b]
-                        ch2 = sg.remote.libero_action(sampler.infer(sg.remote.groot_obs(obs_b, str(task.language)))["actions"])
-                        for k in range(min(args.replan_steps, len(ch2))):
-                            a_last = ch2[k]
-                            obs_b, _, _, _ = env.step(a_last.tolist())
-                            hits += int(bool(ob.obstacle_contacts(env)))
-                    ctx_b = sup.peek_ctx(bool(a_last[6] > 0))
-                    sampler.ctx, sampler.gate, sampler.rec_u = ctx_b, False, None
-                    sampler.infer(sg.remote.groot_obs(obs_b, str(task.language)))  # the policy's reaction at the branched state
-                    lg_b = sampler.last_log
-                    p_b = ob.eef_pos(env)
-                    intent = (lg_b.get("intent_cm") or 0.0) / 100.0
-                    clr = lg_b.get("pred_min_clearance")
-                    clr = args.d_safe if clr is None else clr
-                    dobj = float(np.min(np.linalg.norm(objs - p_b[:2], axis=1))) if len(objs) else 0.0
-                    r = (args.la_w_int * intent + args.la_w_move * float(np.linalg.norm(p_b - p0)) - args.la_w_obj * dobj
-                         - args.la_w_hit * hits - args.la_w_clr * max(0.0, args.d_safe - clr) / args.d_safe
-                         - args.la_w_cost * float(c_cost[b]) / args.d_safe**2 - args.la_w_clr * max(0.0, args.d_safe - float(c_clr[b])) / args.d_safe)
-                    rewards.append(r); diag.append((intent, hits, dobj))
-                sim_.set_state(st); sim_.forward(); env.env.timestep = ts; env.env.done = False
-                sub["hits"] = [set() for _ in xys]
-                r = np.array(rewards)
-                w = np.exp(((r - r.mean()) / (r.std() + 1e-8)) / args.la_tau); w /= w.sum()
-                u_star = (w[:, None] * cands).sum(0)
-                u_prev = np.zeros(3) if la_u is None else la_u
-                u = (1.0 - args.la_beta) * u_prev + args.la_beta * u_star
-                n = np.linalg.norm(u)
-                if n > args.la_umax:
-                    u = u * args.la_umax / n
-                ib = int(np.argmax(r))
-                info = {"la_u_cm": 100 * float(np.linalg.norm(u)), "la_u": (100 * u).round(2).tolist(), "la_r_best": float(r.max()), "la_r_zero": float(r[1]),
-                        "la_r_u0": float(r[0]), "la_ess": float(1.0 / (w**2).sum()), "la_intent_best_cm": 100 * diag[ib][0], "la_intent_zero_cm": 100 * diag[1][0],
-                        "la_hits_mean": float(np.mean([d[1] for d in diag])), "la_B": len(cands), "la_best": ib,
-                        "la_best_u_cm": 100 * float(np.linalg.norm(cands[ib])), "la_best_cost": float(c_cost[ib]), "la_best_clear": float(c_clr[ib])}
-                best = (cands[ib], chunks[ib], float(c_cost[ib]), float(c_clr[ib]))
-                return u, info, best
             chunk_logs, infer_ms = [], []
             hit_names = collections.Counter()
             rec_frames, rec_wrist, rec_hits = [], [], []
@@ -613,34 +494,13 @@ def main():
                     ctx = sup.before_chunk(bool(acts) and acts[-1][6] > 0)
                     ctx.obj_xy = np.array([o for o in object_xy(env).values()  # steer: skip the held object
                                            if np.linalg.norm(o - ob.eef_pos(env)[:2]) > 0.08])
-                    sampler.ctx, sampler.escape_off, sampler.gate = ctx, sup.escape_off, sup.recovery_gate
+                    sampler.ctx, sampler.escape_off = ctx, sup.escape_off
                     held = sup.held
-                    la_info, forced = {}, None
-                    if args.recovery == 2:
-                        sampler.gate = False  # the server's own search stays off; the offset comes from the lookahead
-                        if sup.recovery_gate and not hand_mode:
-                            la_u, la_info, best = lookahead(sg.remote.groot_obs(obs, str(task.language)), bool(acts) and acts[-1][6] > 0)
-                            la_hold = args.rec_hold
-                            sampler.ctx = ctx  # restore the real context after the branches
-                            if args.la_exec == "best":
-                                la_u = best[0]  # warm start of the next candidate distribution
-                                forced = (sg.remote.libero_action(best[1]), {"cost_final": best[2], "pred_min_clearance": best[3],
-                                                                             "cost_per_step": [best[2]], "la_executed": int(la_info["la_best"])})
-                            sampler.rec_u = None if args.la_exec == "best" else la_u
-                        elif la_hold > 0:  # persistence: keep the chosen offset through the flow while the gate is closed
-                            la_hold -= 1
-                            sampler.rec_u = la_u
-                        else:
-                            la_u = None
-                            sampler.rec_u = None
                     if args.log_arm_pred:
                         ap_, _, aa_, _ = ob.arm_points(env, return_bodies=True)
                         pend_ = {"p0": ob.eef_pos(env), "arm0": ap_, "alpha": aa_, "M": ob.arm_motion_matrices(env), "t": t}
                     t0 = time.perf_counter()
-                    if forced is not None:  # lookahead: execute the best candidate chunk itself
-                        chunk, lg = forced
-                        sampler.last_log = lg
-                    elif args.policy == "groot":
+                    if args.policy == "groot":
                         chunk = sg.remote.libero_action(sampler.infer(sg.remote.groot_obs(obs, str(task.language)))["actions"])
                         lg = sampler.last_log
                     else:
@@ -657,8 +517,7 @@ def main():
                                                               "steer_brake_steps", "latches", "latch_sides",
                                                               "car_ess", "car_lat_spread_cm", "car_gate_frac", "car_resid_ratio",
                                                               "guided_first")}
-                                      | {k: v for k, v in lg.items() if k.startswith("mppi_") or k.startswith("car_vec") or k.startswith("rec_") or k.startswith("onm_")}
-                                      | la_info
+                                      | {k: v for k, v in lg.items() if k.startswith("mppi_") or k.startswith("car_vec")}
                                       | {"cost_first": (lg.get("cost_per_step") or [None])[0], "held_obj": held,
                                          "n_obj_spheres": int(sum(g == "obj" for g in (sampler.ctx.sphere_groups or [])))})
                     plan.extend(chunk[: args.replan_steps])
@@ -716,11 +575,6 @@ def main():
                 "held_chunks": int(sum(h is not None for h in sup.held_log)), "held_objects": sorted({h for h in sup.held_log if h}),
                 "collided_object_only": bool(hit_names) and not robot_hit,
                 "post_gate_chunks": sup.post_gate_chunks, "escape_events": sup.escape_events,
-                "recovery_chunks": sum(1 for c in chunk_logs if c.get("rec_gate")),
-                "recovery_applied_chunks": sum(1 for c in chunk_logs if (c.get("rec_applied_cm") or 0) > 0),
-                "lookahead_chunks": sum(1 for c in chunk_logs if c.get("la_u_cm") is not None),
-                "onm_pushed_chunks": sum(1 for c in chunk_logs if c.get("onm_pushed")),
-                "onm_chunks": sum(1 for c in chunk_logs if c.get("onm_pushed") is not None),
                 "hand": hm.info() if hand_mode else None,
                 "arm_pred_err_cm": (100 * np.array(arm_pred).mean(axis=0)).round(3).tolist() if arm_pred else None,
                 "contact_detection": "substep",

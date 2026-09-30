@@ -115,12 +115,13 @@ The layer steers the output of the VLA policy by adding two terms to its base ve
   `v ← v + λ · ĝ`, with `ĝ = normalise(∂J/∂â)`. Always on; this is the safety layer.
 * $\textcolor{#7030A0}{\text{optionally, an off-manifold correction term } \mathrm{CAR}(u)}$ (**purple** in Algorithm 1):
   `v ← v + gate(ctx) · CAR(u)`, because naively editing the action can push it off the action manifold. `u` is a
-  learnable correction vector and `gate(ctx)` opens only when the supervisor detects a conflict between the guidance
+  learnable correction vector and `gate(ctx)` opens only when the supervisor detects a conflict between all guidance
   and the policy. **Off by default** (`gate(ctx) = 0` in every command of this README); switch it on with
-  `--recovery 1` on the command line. We suggest keeping it off.
+  `--guidance car --car_conflict both --car_zero_thr 0.01 --car_batch 32 --car_explore 0.03` in place of `--guidance g1`
+  (the configuration of the Results). We suggest keeping it off.
   The learning objective of CAR is a **reward-weighted flow-matching (velocity-matching) loss**, evaluated only on the gated steps where conflict, details: *Conflict-Aware Additive Guidance for Flow Models under
   Compositional Rewards*, [arXiv:2605.20758](https://arxiv.org/abs/2605.20758); implementation in
-  [`benchmarks/guidance.py`](benchmarks/guidance.py) (`--guidance car --car_param vector`).
+  [`benchmarks/guidance.py`](benchmarks/guidance.py) (`--guidance car`).
 
 ![Algorithm 1: safety layer on top of a frozen flow policy. Black = the policy's own sampler, grey = comments, red = the safety layer, purple = the optional CAR correction term](docs/algorithm1.png)
 

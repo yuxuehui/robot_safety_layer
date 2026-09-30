@@ -73,13 +73,6 @@ class GrootN1Adapter(FlowPolicyAdapter):
         pred = head.action_decoder(out, cond["emb"])
         return pred[:, -self.action_horizon:]
 
-    def expand_cond(self, cond, batch_size):
-        from transformers.feature_extraction_utils import BatchFeature
-
-        ex = lambda v: v.expand(batch_size, *v.shape[1:]) if torch.is_tensor(v) and v.ndim >= 1 and v.shape[0] == 1 else v
-        bo = BatchFeature(data={k: ex(v) for k, v in cond["bo"].items()})
-        return {"vl": ex(cond["vl"]), "state": ex(cond["state"]), "emb": ex(cond["emb"]), "bo": bo}
-
     def action_map(self):
         return self._action_map
 

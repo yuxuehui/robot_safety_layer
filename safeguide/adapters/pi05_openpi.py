@@ -53,14 +53,6 @@ class Pi05Adapter(FlowPolicyAdapter):
         state, prefix_pad_masks, pkv = cond
         return self.model.denoise_step(state, prefix_pad_masks, pkv, x_t, t)
 
-    def expand_cond(self, cond, batch_size):
-        import copy
-
-        state, prefix_pad_masks, pkv = cond
-        pkv_b = copy.deepcopy(pkv)
-        pkv_b.batch_repeat_interleave(batch_size)
-        return (state.expand(batch_size, *state.shape[1:]), prefix_pad_masks.expand(batch_size, *prefix_pad_masks.shape[1:]), pkv_b)
-
     def action_map(self):
         if self.norm_stats is None or self.G is None:
             raise ValueError("Pi05Adapter needs norm_stats and the calibrated gain G to build the action map")

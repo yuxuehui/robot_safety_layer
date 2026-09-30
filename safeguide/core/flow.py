@@ -20,17 +20,6 @@ class FlowSpec:
         """Predicted clean chunk from the current state and velocity (rectified flow: straight line to the data)."""
         return x - t * v if self.noise_at_one else x + (1.0 - t) * v
 
-    def time_from(self, level, i, num_steps):
-        """Flow time of Euler step i when integrating from noise level `level` (1 = pure noise) to the data."""
-        return level * (1.0 - i / num_steps) if self.noise_at_one else (1.0 - level) + i * level / num_steps
-
-    def dt_from(self, level, num_steps):
-        return -level / num_steps if self.noise_at_one else level / num_steps
-
-    def renoise(self, x, eps, level):
-        """Move a clean chunk x back to noise level `level` (same expression in both conventions)."""
-        return level * eps + (1.0 - level) * x
-
     def noise_level(self, t):
         """1 at pure noise, 0 at data."""
         return t if self.noise_at_one else 1.0 - t

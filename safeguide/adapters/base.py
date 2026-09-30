@@ -26,10 +26,6 @@ class FlowPolicyAdapter:
         differentiable w.r.t. x_t only when GuideConfig.grad_through_model is used."""
         raise NotImplementedError
 
-    def expand_cond(self, cond, batch_size):
-        """Repeat a batch-1 conditioning `batch_size` times (for batched candidate rollouts)."""
-        raise NotImplementedError
-
     def action_map(self) -> ActionMap:
         """Normalised action chunk -> end-effector motion, for this checkpoint's normalisation and action semantics."""
         raise NotImplementedError

@@ -109,10 +109,6 @@ class RemoteGuidedPolicy:
         self.ctx: ChunkCostContext | None = None
         self.escape_off = None
         self.scale = None  # guidance push size sent with every call (None = the server's default)
-        self.gate = False  # recovery gate (Supervisor.recovery_gate) sent with every call
-        self.rec_u = None  # externally chosen correction offset (lookahead search), applied by the server's Guide
-        self.onm_n = 0  # on-manifold-first: number of policy samples (0 = off)
-        self.proj_tau = 0.0  # restart projection level for the pushed fallback (0 = off)
         self.last_log = {}
         self.info = self.call("safeguide_info", requires_input=False)
         self.action_horizon = int(self.info["action_horizon"])  # steps of the chunk that carry real actions
@@ -149,7 +145,7 @@ class RemoteGuidedPolicy:
         return self._map
 
     def reset_episode(self, seed=None):
-        self.escape_off, self.gate, self.rec_u, self.last_log = None, False, None, {}
+        self.escape_off, self.last_log = None, {}
         self.call("safeguide_reset", {"seed": None if seed is None else int(seed)})
 
     def infer(self, gobs):
@@ -157,21 +153,10 @@ class RemoteGuidedPolicy:
         data = {"obs": gobs,
                 "ctx": None if self.ctx is None else ctx_to_wire(self.ctx),
                 "escape_off": None if self.escape_off is None else np.asarray(self.escape_off, dtype=float),
-                "scale": None if self.scale is None else float(self.scale), "gate": bool(self.gate),
-                "rec_u": None if self.rec_u is None else np.asarray(self.rec_u, dtype=float),
-                "onm_n": int(self.onm_n), "proj_tau": float(self.proj_tau)}
+                "scale": None if self.scale is None else float(self.scale)}
         resp = self.call("safeguide_get_action", data)
         self.last_log = resp.get("log") or {}
         return {"actions": np.asarray(resp["actions"], dtype=np.float32)}
-
-    def candidates(self, gobs, u0=None, B=8, sigma=0.03, u_max=0.03, cands_in=None):
-        """B candidate offsets (random around u0, or the given cands_in) and their decoded chunks (GR00T convention, see
-        libero_action) for a lookahead search."""
-        resp = self.call("safeguide_candidates", {"obs": gobs, "ctx": ctx_to_wire(self.ctx), "scale": None if self.scale is None else float(self.scale),
-                                                  "u0": None if u0 is None else np.asarray(u0, dtype=float), "B": int(B), "sigma": float(sigma), "u_max": float(u_max),
-                                                  "cands_in": None if cands_in is None else np.asarray(cands_in, dtype=np.float32)})
-        return (np.asarray(resp["cands"], dtype=float), np.asarray(resp["actions"], dtype=np.float32),
-                np.asarray(resp.get("cost", np.zeros(len(resp["cands"]))), dtype=float), np.asarray(resp.get("clear", np.zeros(len(resp["cands"]))), dtype=float))
 
     def close(self):
         self.socket.close()
