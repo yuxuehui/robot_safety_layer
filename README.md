@@ -277,11 +277,15 @@ Paired episodes (placements × 3 seeds, LIBERO-spatial + LIBERO-object): single 
 CAR vs guidance on safe success (paired McNemar, wins/losses): single 16/11, p = 0.44; gate ±17 cm 2/12, p = 0.013;
 gate ±20 cm 4/6, p = 0.75.
 
-**Some faliure cases:**
-However, state OOD is the main cause of failure (the rest faulure is unsafe success, i.e., vliatte constraints). like the video, after action steer by guidance, the robot is in a state the policy never saw and it fails
+**Some failure cases.** However, state OOD is the main cause of failure (the remaining failures are unsafe successes,
+i.e. constraint violations). As in the clips below, after the guidance has steered the action the robot is in a state
+the policy never saw, and it fails.
+
+<table><tr><td width="25%" align="center"><img src="docs/results/groot_state_ood_1.gif" width="100%"><br><sub>state OOD 1 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_state_ood_2.gif" width="100%"><br><sub>state OOD 2 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_state_ood_3.gif" width="100%"><br><sub>state OOD 3 — bowl on the stove</sub></td><td width="25%" align="center"><img src="docs/results/groot_state_ood_4.gif" width="100%"><br><sub>state OOD 4 — bowl on the stove</sub></td></tr></table>
+<sub>GR00T N1.7 + safety layer, gate ±17 cm, seed 0: no contact, task not completed within 220 steps.</sub>
 
 **Conclusion.** Steering a frozen policy at inference time easily leads to state OOD. Action-level off-manifold
 corrections (pulling back to, or re-sampling on, the policy's manifold) generally do not help with it; the only remedy
 is to bring the robot back to a state the policy knows. Most tasks show no strong conflict between the guidance and
-the policy in the first place, and CAR triples the policy-call latency, so we suggest deploying the guidance layer
+the policy, and CAR triples the policy-call latency, so we suggest deploying the guidance layer
 without CAR.
