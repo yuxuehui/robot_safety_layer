@@ -66,8 +66,11 @@ The exact barrier and cost definitions are in [`safeguide/tasks.py`](safeguide/t
 Two entry points, from light to full control:
 
 **(a) New obstacle geometry, same barrier.** Implement the `Scene` interface (`safeguide/scene/base.py`): return
-cylinders and/or capsules (with predicted poses over the chunk). Anything a perception front end produces as
-primitives plugs in here without touching the cost.
+cylinders and/or capsules (with predicted poses over the chunk). On a real robot this is where the **detected obstacle
+locations** go in: fit vertical cylinders to the obstacle point cloud (or read them from a workspace map) and return
+them from `cylinders()`; feed the tracked human joints (elbow, fingertip) to `HumanArmTrack.observe()` every control
+step and it returns the predicted, margin-inflated capsules from `capsules(H)`. Nothing else changes; the barrier and
+the push are the same as in simulation. Template: [`examples/scene_template.py`](examples/scene_template.py).
 
 ```python
 class MyScene(sg.Scene):
