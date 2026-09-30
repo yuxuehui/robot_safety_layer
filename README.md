@@ -202,7 +202,11 @@ copy (`config.json` `model_name` and `processor_config.json` `processor_kwargs.m
 
 ## 📊 Results
 
-The key observation is, without safety layer, even the pretrained VLA policies can see the obstacles it cannot sastify the inferenc-time constraints (i.e., aviding colide with static and dynamic obstavles), with safety layer can improve the 
+**Key observation.** Without the safety layer, the pretrained VLA policies fail to satisfy the inference-time
+constraints even though the obstacles are in their camera view: they collide with the static and the dynamic
+obstacles in most episodes. With the safety layer, the safe success rate rises and the violation rate drops 3–25x
+for both policies and all five layouts, at a cost of 10–50 ms per policy call for the pillars (more for the moving
+arm, whose capsules are predicted over the chunk).
 
 ### (1) Safety layer on pi0.5 and GR00T N1.7
 
@@ -217,7 +221,7 @@ seed. Red border = physics contact with the obstacle; the timeline shows the gri
 <tr><td width="50%" align="center"><img src="docs/results/pi05_hreach.gif" width="100%"><br><sub>pi0.5 — human arm reaching for the same object</sub></td><td width="50%" align="center"><img src="docs/results/groot_hreach.gif" width="100%"><br><sub>GR00T N1.7 — human arm reaching for the same object</sub></td></tr>
 </table>
 
-LIBERO-spatial + LIBERO-object, obstacles placed on the frozen policy's own path (unseen in training), 3 noise seeds,
+<sub>LIBERO-spatial + LIBERO-object, obstacles placed on the frozen policy's own path (unseen in training), 3 noise seeds,
 paired episodes (same placement and seed for every arm). *Safe success* = task completed with no physics contact
 with the obstacle; *violation* = any contact; the remainder are *state OOD* (no contact, task not completed).
 
@@ -243,16 +247,6 @@ with the obstacle; *violation* = any contact; the remainder are *state OOD* (no 
 | Dynamic: hand reaching | 583 | 2.2 % / 97.4 % | **16.6 % / 4.3 %** | 0.15 → 0.41 s |
 
 
-Violations drop 3–25x under every constraint and for both policies. The residual failures are **state OOD**: after
-the detour the robot is in a state the frozen policy never saw (out of distribution) and it does not complete the task.
-
-**Failure cases: state OOD (GR00T N1.7 + safety layer, gate ±17 cm).** Four episodes that end without contact but
-without the task being completed (220-step limit). In each of them the layer has done its job: the arm is steered around the pillars
-with no collision. The frozen policy then sits in a state it never saw during training, dithers a few centimetres
-back and forth, and never returns to the task.
-
-<table><tr><td width="25%" align="center"><img src="docs/results/groot_state_ood_1.gif" width="100%"><br><sub>state OOD 1 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_state_ood_2.gif" width="100%"><br><sub>state OOD 2 — bowl on the cookie box</sub></td><td width="25%" align="center"><img src="docs/results/groot_state_ood_3.gif" width="100%"><br><sub>state OOD 3 — bowl on the stove</sub></td><td width="25%" align="center"><img src="docs/results/groot_state_ood_4.gif" width="100%"><br><sub>state OOD 4 — bowl on the stove</sub></td></tr></table>
-
 ### (2) Guidance alone vs. guidance + CAR correction
 
 The off-manifold correction term (CAR, Step 2) targets action-level errors: naively steering the velocity can push
@@ -273,10 +267,10 @@ orange = guidance push in the current chunk, purple arrow = CAR correction (×3)
 | Gate ±20 cm — violation | 29.9 % | 10.0 % | **8.8 %** |
 | Policy-call latency | **0.29–0.47 s** | 0.32–0.71 s | 1.8–2.3 s |
 
-n = paired episodes (placements × 3 seeds, LIBERO-spatial + LIBERO-object): single 408, gate ±17 cm 207, gate ±20 cm 261.
+<sub>n = paired episodes (placements × 3 seeds, LIBERO-spatial + LIBERO-object): single 408, gate ±17 cm 207, gate ±20 cm 261.
 Differences between + guidance and + guidance + CAR are within noise except gate ±17 cm, where CAR is slightly worse.
 
-### Some failure cases
+### （3）Some failure cases
 However, state OOD is the main cause of failure (the remaining failures are unsafe successes,
 i.e. constraint violations). As in the clips below, after the guidance has steered the action the robot is in a state
 the policy never saw, and it fails.
