@@ -1,10 +1,31 @@
+Metadata-Version: 2.4
+Name: safeguide
+Version: 0.1.0
+Summary: Inference-time safety layer for frozen flow-matching VLA policies: runtime constraints as cost functions, applied by guiding the policy's own denoising.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.24
+Requires-Dist: torch>=2.1
+Provides-Extra: groot
+Requires-Dist: pyzmq; extra == "groot"
+Requires-Dist: msgpack; extra == "groot"
+Requires-Dist: msgpack-numpy; extra == "groot"
+Provides-Extra: benchmarks
+Requires-Dist: imageio; extra == "benchmarks"
+Requires-Dist: matplotlib; extra == "benchmarks"
+Requires-Dist: pillow; extra == "benchmarks"
+
 # robot_safety_layer
 
 A plug-in **safety layer for frozen flow-matching VLA policies** (pi0.5, GR00T N1.7). Runtime safety constraints
 are written as differentiable cost functions on the action chunk; at inference time the layer steers the policy's
 own denoising process away from constraint violations. No retraining, no gradient through the policy network.
 
-![Motivation and solution: a plug-in safety layer between the generative policy and the robot](docs/overview.png)
+```
+observation ──► frozen flow policy ──► safety layer ──► safe action chunk
+                                          ▲
+                        runtime safety constraints  (Step 1: cost functions J)
+```
 
 Evaluated on LIBERO with two constraints (static pillars, a moving human arm) for pi0.5 and GR00T N1.7 (Step 3).
 
@@ -41,11 +62,6 @@ J(â)  = Σ_k Σ_h w_h Σ_p relu(f_khp − c_khp)²                          con
 
 Far spheres may approach at a rate proportional to their clearance, spheres that keep their distance are never
 penalised, and the margin itself is never crossed.
-
-<table><tr>
-<td width="50%"><img src="docs/constraint_static_pillar.png" alt="Example 1: a pillar on the robot's path" width="100%"><br><sub><b>Example 1</b> — static obstacles: pillars placed on the policy's own approach path (unseen in training)</sub></td>
-<td width="50%"><img src="docs/constraint_dynamic_hand.png" alt="Example 2: a human arm reaching into the workspace" width="100%"><br><sub><b>Example 2</b> — dynamic obstacle: a human arm sweeping across / reaching into the workspace</sub></td>
-</tr></table>
 
 ### Example 1 — static obstacles (`StaticObstacleTask`)
 
@@ -124,10 +140,22 @@ The policy's sampler integrates a velocity field `v_θ(x_t, t | obs)` from noise
 wraps that loop (Algorithm 1). Notation: `t` runs in the policy's own convention (`FlowSpec`: 1→0 for openpi, 0→1
 for GR00T), `A` = action map, `λ` = push scale (1.0), `v_ref` = 1 cm.
 
-![Algorithm 1: guided sampling of one action chunk. Black = the policy's own sampler, red = the safety layer, blue = the runtime constraint](docs/algorithm1.png)
-
-LaTeX source with the same colour code: [`docs/algorithm1.tex`](docs/algorithm1.tex) (black = the frozen policy's own
-sampler, red = the safety layer, blue = the constraint of Step 1).
+```
+Algorithm 1  Guided sampling of one action chunk
+Input   obs, frozen velocity field v_θ, constraint J (Step 1), supervisor state (release / escape / held object)
+ 1:  ctx ← Supervisor.before_chunk(robot, scene)          # obstacles, sphere model, c0 = clearance now
+ 2:  cond ← policy.prepare(obs)                            # prefix / KV cache, computed once
+ 3:  x ← noise
+ 4:  for each Euler step t of the policy's schedule:
+ 5:      v ← v_θ(cond, x, t)                               # one velocity-field call, no gradient
+ 6:      â ← x − t·v                                       # clean-chunk estimate (rectified flow)
+ 7:      J, viol ← constraint(â, ctx)
+ 8:      ĝ ← normalise(∂J/∂â)                              # unit-RMS gradient
+ 9:      v ← v + λ · min(1, viol / v_ref) · ĝ  (+ A(escape offset) if the supervisor asked for one)
+10:      x ← x + Δt · v
+11:  Supervisor.after_chunk(log)                           # release / deadlock bookkeeping
+12:  return the first `exec_steps` actions of x; replan
+```
 
 Lines 5–10 are `Guide.sample` (`safeguide/core/guide.py`); lines 1 and 11 are the `Supervisor`
 (`safeguide/core/supervisor.py`). A model is plugged in through a `FlowPolicyAdapter` (`safeguide/adapters/base.py`):
@@ -205,27 +233,28 @@ copy (`config.json` `model_name` and `processor_config.json` `processor_kwargs.m
 
 LIBERO-spatial + LIBERO-object, obstacles placed on the frozen policy's own path (unseen in training), 3 noise seeds,
 paired episodes (same placement and seed for every arm). *Safe success* = task completed with no physics contact
-with the obstacle; *violation* = any contact; the remainder did not complete the task without contact.
+with the obstacle; *violation* = any contact; the rest are stalls (no contact, task not completed). Paired McNemar
+tests on safe success, task-clustered permutation p in the analysis files.
 
 **pi0.5** (10 Euler steps, replan every 5 steps)
 
-| Constraint / layout | n | frozen pi0.5 (safe / violation) | + safety layer (safe / violation) | latency per call |
-|---|---|---|---|---|
-| Static: two pillars, gate ±17 cm | 207 | 55.1 % / 44.0 % | **73.9 % / 16.4 %** | 0.29 → 0.32 s |
-| Static: two pillars, gate ±20 cm | 261 | 68.6 % / 29.9 % | **76.6 % / 10.0 %** | 0.33 → 0.34 s |
-| Static: one pillar on the grasp path | 408 | 0.0 % / 100 % | 12.5 % / 20.8 % | 0.47 → 0.71 s |
-| Dynamic: hand sweeping across the workspace | 295 | 4.1 % / 95.9 % | **44.7 % / 16.9 %** | 0.38 → 0.48 s |
-| Dynamic: hand reaching for the same object | 295 | 2.0 % / 98.0 % | **39.3 % / 3.7 %** | 0.37 → 0.44 s |
+| Constraint / layout | n | frozen pi0.5 (safe / violation) | + safety layer (safe / violation) | paired wins/losses | latency per call |
+|---|---|---|---|---|---|
+| Static: two pillars, gate ±17 cm | 207 | 55.1 % / 44.0 % | **73.9 % / 16.4 %** | 43 / 4 | 0.29 → 0.32 s |
+| Static: two pillars, gate ±20 cm | 261 | 68.6 % / 29.9 % | **76.6 % / 10.0 %** | 27 / 6 | 0.33 → 0.34 s |
+| Static: one pillar on the grasp path | 408 | 0.0 % / 100 % | 12.5 % / 20.8 % (stall 67 %) | 51 / 0 | 0.47 → 0.71 s |
+| Dynamic: hand sweeping across the workspace | 295 | 4.1 % / 95.9 % | **44.7 % / 16.9 %** | 123 / 3 | 0.38 → 0.48 s |
+| Dynamic: hand reaching for the same object | 295 | 2.0 % / 98.0 % | **39.3 % / 3.7 %** | 113 / 3 | 0.37 → 0.44 s |
 
 **GR00T N1.7** (4 Euler steps, replan every 8 steps, same constraints and margins, no re-tuning)
 
-| Constraint / layout | n | frozen GR00T (safe / violation) | + safety layer (safe / violation) |
-|---|---|---|---|
-| Static: gate ±17 cm | 210 | 58.1 % / 41.4 % | **64.3 % / 15.2 %** |
-| Static: gate ±20 cm | 258 | 66.7 % / 30.6 % | **73.3 % / 14.3 %** |
-| Static: one pillar | 402 | 0.0 % / 99.5 % | 7.5 % / 11.4 % |
-| Dynamic: hand sweeping | 586 | 4.3 % / 95.2 % | **15.2 % / 19.1 %** |
-| Dynamic: hand reaching | 583 | 2.2 % / 97.4 % | **16.6 % / 4.3 %** |
+| Constraint / layout | n | frozen GR00T (safe / violation) | + safety layer (safe / violation) | paired wins/losses |
+|---|---|---|---|---|
+| Static: gate ±17 cm | 210 | 58.1 % / 41.4 % | **64.3 % / 15.2 %** | 23 / 10 |
+| Static: gate ±20 cm | 258 | 66.7 % / 30.6 % | **73.3 % / 14.3 %** | 24 / 7 |
+| Static: one pillar | 402 | 0.0 % / 99.5 % | 7.5 % / 11.4 % (stall 81 %) | 30 / 0 |
+| Dynamic: hand sweeping | 586 | 4.3 % / 95.2 % | **15.2 % / 19.1 %** | 80 / 16 |
+| Dynamic: hand reaching | 583 | 2.2 % / 97.4 % | **16.6 % / 4.3 %** | 93 / 9 |
 
 Violations drop 3–25x under every constraint and for both policies. The residual failures are stalls: after the
 detour the robot is in a state the frozen policy never saw and it does not complete the task. Replanning every

@@ -1,0 +1,33 @@
+% Algorithm 1 of the README / paper. Build: pdflatex algorithm1.tex  (standalone), or paste the algorithmic block into a paper.
+% Colour code:  black = the frozen policy's own sampler,  red = the safety layer (this package),  blue = the runtime constraint.
+\documentclass[border=6pt,varwidth=15cm]{standalone}
+\usepackage{amsmath,amssymb}
+\usepackage[dvipsnames]{xcolor}
+\usepackage[noend]{algpseudocode}
+\definecolor{layer}{HTML}{C00000}
+\definecolor{constraint}{HTML}{1F5FBF}
+\newcommand{\SL}[1]{{\color{layer}#1}}
+\newcommand{\CS}[1]{{\color{constraint}#1}}
+\newcommand{\ahat}{\hat{\mathbf a}}
+\begin{document}
+\begin{minipage}{15cm}
+\noindent\textbf{Algorithm 1} Guided sampling of one action chunk (\SL{safety layer} on a frozen flow policy)\par\vspace{2pt}\hrule\vspace{4pt}
+\begin{algorithmic}[1]
+\Require observation $o$; frozen velocity field $v_\theta$ with $N$ Euler steps; \CS{constraint cost $J$ (Step~1)}; action map $A$; push scale $\lambda$, reference violation $v_{\mathrm{ref}}$; executed prefix $K$
+\State \SL{$\mathrm{ctx} \gets \textsc{Supervisor.before\_chunk}(\text{robot}, \text{scene})$} \Comment{\SL{obstacles, sphere model, clearance $c_0$ measured now}}
+\State $\mathrm{cond} \gets \textsc{prepare}(o)$ \Comment{prefix / KV cache, once per chunk}
+\State $\mathbf x \gets \boldsymbol\epsilon \sim \mathcal N(0, I)$
+\For{each Euler step $t$ of the policy's schedule ($N$ steps)}
+    \State $\mathbf v \gets v_\theta(\mathrm{cond}, \mathbf x, t)$ \Comment{one velocity-field call, no gradient}
+    \State \SL{$\ahat \gets \mathbf x - t\,\mathbf v$} \Comment{\SL{clean-chunk estimate (rectified flow)}}
+    \State \SL{$J, \, \mathrm{viol} \gets$} \CS{$J(\ahat; \mathrm{ctx})$} \Comment{\CS{Step 1: cost and violation in metres}}
+    \State \SL{$\hat{\mathbf g} \gets \mathrm{normalise}\!\left(\partial J / \partial \ahat\right)$} \Comment{\SL{unit-RMS gradient}}
+    \State \SL{$\mathbf v \gets \mathbf v + \lambda \cdot \min\!\left(1, \mathrm{viol} / v_{\mathrm{ref}}\right) \hat{\mathbf g}$} \Comment{\SL{$+\,A(\text{escape offset})$ if the supervisor asked for one}}
+    \State $\mathbf x \gets \mathbf x + \Delta t \, \mathbf v$
+\EndFor
+\State \SL{$\textsc{Supervisor.after\_chunk}(\log)$} \Comment{\SL{release / deadlock bookkeeping}}
+\State \Return the first $K$ actions of $\mathbf x$; replan
+\end{algorithmic}
+\vspace{2pt}\hrule
+\end{minipage}
+\end{document}
