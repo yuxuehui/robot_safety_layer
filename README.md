@@ -223,8 +223,8 @@ with the obstacle; *violation* = any contact; the remainder did not complete the
 | Static: two pillars, gate ±17 cm | 207 | 55.1 % / 44.0 % | **73.9 % / 16.4 %** | 0.29 → 0.32 s |
 | Static: two pillars, gate ±20 cm | 261 | 68.6 % / 29.9 % | **76.6 % / 10.0 %** | 0.33 → 0.34 s |
 | Static: one pillar on the grasp path | 408 | 0.0 % / 100 % | **12.5 % / 20.8 %** | 0.47 → 0.71 s |
-| Dynamic: hand sweeping across the workspace | 295 | 4.1 % / 95.9 % | **44.7 % / 16.9 %** | 0.38 → 0.48 s |
-| Dynamic: hand reaching for the same object | 295 | 2.0 % / 98.0 % | **39.3 % / 3.7 %** | 0.37 → 0.44 s |
+| Dynamic: hand sweeping | 295 | 4.1 % / 95.9 % | **44.7 % / 16.9 %** | 0.38 → 0.48 s |
+| Dynamic: hand reaching | 295 | 2.0 % / 98.0 % | **39.3 % / 3.7 %** | 0.37 → 0.44 s |
 
 
 **GR00T N1.7** (4 Euler steps, replan every 8 steps, same constraints and margins, no re-tuning)
