@@ -199,7 +199,7 @@ copy (`config.json` `model_name` and `processor_config.json` `processor_kwargs.m
 
 ## 📊 Results
 
-### Safety layer on pi0.5 and GR00T N1.7
+### (1) Safety layer on pi0.5 and GR00T N1.7
 
 Each clip: left = frozen policy, right = frozen policy + safety layer, same task, same obstacle placement, same noise
 seed. Red border = physics contact with the obstacle; the timeline shows the gripper clearance.
@@ -241,7 +241,7 @@ with the obstacle; *violation* = any contact; the remainder did not complete the
 Violations drop 3–25x under every constraint and for both policies. The residual failures are stalls: after the
 detour the robot is in a state the frozen policy never saw and it does not complete the task.
 
-### Guidance alone vs. guidance + CAR correction
+### (2) Guidance alone vs. guidance + CAR correction
 
 Does the optional off-manifold correction term (CAR, Step 2) help? Same protocol, pi0.5, three pillar layouts.
 
