@@ -76,6 +76,9 @@ class RewindConfig:
     cooldown: int = 6  # chunks after a rewind before the trigger may fire again
     min_back: int = 2  # a rewind must go back at least this many chunks
     guided_cost: float = 1e-3  # a chunk counts as 'guided' for the quiet test only above this barrier cost (tiny grazes ignored)
+    ood_window: int = 3  # OOD-persistence trigger: this many consecutive chunk starts above ood_thr (and quiet) also fires
+    shortcut: bool = True  # rewind along straight collision-free shortcuts of the recorded path instead of retracing it
+    clear_r: float = 0.06  # m: radius of the end-effector sphere used to check shortcut segments against the cylinders
 
 
 class RewindRecovery:
@@ -115,8 +118,13 @@ class RewindRecovery:
         active = [c["cost"] > cfg.guided_cost for c in self.chunks]
         quiet = not any(active[-cfg.quiet:]) if cfg.quiet > 0 else True
         ever = any(c["guided"] for c in self.chunks)
-        fire = ever and quiet and net < cfg.net_thr and path >= cfg.ratio * net
-        self.last_trigger = {"rw_net_cm": 100 * net, "rw_path_cm": 100 * path, "rw_quiet": quiet, "rw_fire": fire}
+        dither = net < cfg.net_thr and path >= cfg.ratio * net
+        recent_ood = [c["ood"] for c in self.chunks[-cfg.ood_window:]]
+        persist = (self.last_ood is not None and len(recent_ood) >= cfg.ood_window
+                   and all(o is not None and o > cfg.ood_thr for o in recent_ood) and self.last_ood > cfg.ood_thr)
+        fire = ever and quiet and (dither or persist)
+        self.last_trigger = {"rw_net_cm": 100 * net, "rw_path_cm": 100 * path, "rw_quiet": quiet, "rw_dither": dither,
+                             "rw_persist": persist, "rw_fire": fire}
         return fire
 
     def target(self, gripper_closed, held):
@@ -130,13 +138,44 @@ class RewindRecovery:
                 return c
         return None
 
-    def plan(self, target, gripper_closed):
-        """Raw delta-EEF actions that retrace the recorded path from now back to the target chunk start."""
+    @staticmethod
+    def _segment_clear(a, b, cylinders, r, ds=0.01):
+        """True if the sphere of radius r moving from a to b stays clear of all vertical cylinders."""
+        if cylinders is None:
+            return True
+        cen, rad, hh = cylinders
+        if len(cen) == 0:
+            return True
+        n = max(2, int(np.ceil(np.linalg.norm(b - a) / ds)) + 1)
+        pts = a[None, :] + (b - a)[None, :] * np.linspace(0, 1, n)[:, None]
+        for c, R, h in zip(cen, rad, hh):
+            dxy = np.linalg.norm(pts[:, :2] - c[:2], axis=1) - R
+            dz = np.abs(pts[:, 2] - c[2]) - h
+            d = np.where(dz > 0, np.sqrt(np.maximum(dxy, 0) ** 2 + dz ** 2), dxy)
+            if (d < r).any():
+                return False
+        return True
+
+    def _shortcut(self, way, cylinders):
+        """Greedy path shortcutting: from each point jump to the farthest later waypoint reachable in a straight line."""
+        out = [way[0]]; i = 0
+        while i < len(way) - 1:
+            j = len(way) - 1
+            while j > i + 1 and not self._segment_clear(way[i], way[j], cylinders, self.cfg.clear_r):
+                j -= 1
+            out.append(way[j]); i = j
+        return out
+
+    def plan(self, target, gripper_closed, cylinders=None):
+        """Raw delta-EEF actions that bring the end effector from now back to the target chunk start, along the
+        recorded path (shortcut through free space when `shortcut` is on)."""
         cfg = self.cfg
         now = len(self.path)
         way = [p for p, _ in self.path[target["step"]:now]][::-1]  # from the current position back to the target
         if not way:
             return []
+        if cfg.shortcut:
+            way = self._shortcut(way, cylinders)
         pts = [way[0]]
         for p in way[1:]:  # keep waypoints at least `step` apart, split long jumps
             d = p - pts[-1]; n = float(np.linalg.norm(d))

@@ -201,6 +201,8 @@ def main():
     ap.add_argument("--rewind_max", type=int, default=2)
     ap.add_argument("--rewind_step", type=float, default=0.012)
     ap.add_argument("--rewind_cooldown", type=int, default=6)
+    ap.add_argument("--rewind_ood_window", type=int, default=3)
+    ap.add_argument("--rewind_shortcut", type=int, default=1)
     ap.add_argument("--margin_obj", type=float, default=None, help="CBF/hinge margin for held-object spheres (default: margin_grip)")
     # guidance
     ap.add_argument("--guidance", default="none", choices=["none", "g1", "bestofn", "project", "oc", "car", "mppi"])
@@ -331,7 +333,8 @@ def main():
         escape_min_disp=args.escape_min_disp, escape_lift=args.escape_lift, escape_len=args.escape_len,
         rewind=(sg.core.recovery.RewindConfig(window=args.rewind_window, net_thr=args.rewind_net, ratio=args.rewind_ratio,
                                               quiet=args.rewind_quiet, ood_thr=args.rewind_thr, max_events=args.rewind_max,
-                                              step=args.rewind_step, cooldown=args.rewind_cooldown) if args.rewind else None))
+                                              step=args.rewind_step, cooldown=args.rewind_cooldown, ood_window=args.rewind_ood_window,
+                                              shortcut=bool(args.rewind_shortcut)) if args.rewind else None))
     json.dump({**vars(args), "G": np.asarray(G).tolist()}, open(out / "args.json", "w"), indent=1)
     print("action->EEF gain G:", np.asarray(G).round(4).tolist(), "| robot model:", args.robot_model, flush=True)
 

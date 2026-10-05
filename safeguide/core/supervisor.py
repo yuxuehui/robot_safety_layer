@@ -132,7 +132,7 @@ class Supervisor:
             elif self.rec.events < cfg.rewind.max_events and self.rec.dithering(p_now):
                 tgt = self.rec.target(gripper_closed, held)
                 if tgt is not None:
-                    acts = self.rec.plan(tgt, gripper_closed)
+                    acts = self.rec.plan(tgt, gripper_closed, cylinders=self.scene.cylinders())
                     if acts:
                         self.rewind_actions = acts
                         self.escape_off, self.escape_left = None, 0
