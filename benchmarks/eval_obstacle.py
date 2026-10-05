@@ -546,6 +546,7 @@ def main():
                                           | {k: v for k, v in lg.items() if k.startswith("mppi_") or k.startswith("car_vec")}
                                           | {"cost_first": (lg.get("cost_per_step") or [None])[0], "held_obj": held,
                                              "ood_cm": None if sup.last_ood is None else 100 * sup.last_ood,
+                                             **(sup.rec.last_trigger or {}),
                                              "n_obj_spheres": int(sum(g == "obj" for g in (sampler.ctx.sphere_groups or [])))})
                         plan.extend(chunk[: args.replan_steps])
                 action = np.asarray(plan.popleft())

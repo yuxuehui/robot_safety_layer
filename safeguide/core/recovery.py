@@ -75,6 +75,7 @@ class RewindConfig:
     step: float = 0.012  # m: max EEF displacement per rewind control step (~ one unit action)
     cooldown: int = 6  # chunks after a rewind before the trigger may fire again
     min_back: int = 2  # a rewind must go back at least this many chunks
+    guided_cost: float = 1e-3  # a chunk counts as 'guided' for the quiet test only above this barrier cost (tiny grazes ignored)
 
 
 class RewindRecovery:
@@ -90,6 +91,7 @@ class RewindRecovery:
         self.events, self.steps_total, self.cooldown = 0, 0, 0
         self.last_target_step = None
         self.last_ood = None
+        self.last_trigger = None
 
     def note_step(self, p, gripper_closed):
         self.path.append((np.asarray(p, float).copy(), bool(gripper_closed)))
@@ -98,20 +100,24 @@ class RewindRecovery:
         self.last_ood = None if self.manifold is None else self.manifold.distance(p, gripper_closed)
         return self.last_ood
 
-    def record_chunk(self, p, gripper_closed, held, guided):
+    def record_chunk(self, p, gripper_closed, held, guided, cost=0.0):
         self.chunks.append({"step": len(self.path), "p": np.asarray(p, float).copy(), "closed": bool(gripper_closed),
-                            "held": held, "ood": self.last_ood, "guided": bool(guided)})
+                            "held": held, "ood": self.last_ood, "guided": bool(guided), "cost": float(cost or 0.0)})
 
     def dithering(self, p_now):
         cfg = self.cfg
+        self.last_trigger = None
         if len(self.chunks) < cfg.window:
             return False
         pts = [c["p"] for c in self.chunks[-cfg.window:]] + [np.asarray(p_now, float)]
         net = float(np.linalg.norm(pts[-1] - pts[0]))
         path = float(sum(np.linalg.norm(pts[j + 1] - pts[j]) for j in range(len(pts) - 1)))
-        quiet = not any(c["guided"] for c in self.chunks[-cfg.quiet:]) if cfg.quiet > 0 else True
+        active = [c["cost"] > cfg.guided_cost for c in self.chunks]
+        quiet = not any(active[-cfg.quiet:]) if cfg.quiet > 0 else True
         ever = any(c["guided"] for c in self.chunks)
-        return ever and quiet and net < cfg.net_thr and path >= cfg.ratio * net
+        fire = ever and quiet and net < cfg.net_thr and path >= cfg.ratio * net
+        self.last_trigger = {"rw_net_cm": 100 * net, "rw_path_cm": 100 * path, "rw_quiet": quiet, "rw_fire": fire}
+        return fire
 
     def target(self, gripper_closed, held):
         """Most recent in-distribution chunk start with the same gripper / held state; earlier than the previous target."""

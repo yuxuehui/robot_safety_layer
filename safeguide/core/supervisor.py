@@ -128,6 +128,7 @@ class Supervisor:
         if cfg.rewind is not None and self.manifold is not None:
             if self.rec.cooldown > 0:
                 self.rec.cooldown -= 1
+                self.rec.dithering(p_now)  # diagnostics only
             elif self.rec.events < cfg.rewind.max_events and self.rec.dithering(p_now):
                 tgt = self.rec.target(gripper_closed, held)
                 if tgt is not None:
@@ -164,7 +165,7 @@ class Supervisor:
         guided = ((last_log.get("cost_per_step") or [0])[0] or 0) > 0
         self.hist.append((self._p_now, guided))
         p, g, held = self._pending
-        self.rec.record_chunk(p, g, held, guided=guided)
+        self.rec.record_chunk(p, g, held, guided=guided, cost=(last_log.get("cost_per_step") or [0])[0])
 
     @property
     def held(self):
