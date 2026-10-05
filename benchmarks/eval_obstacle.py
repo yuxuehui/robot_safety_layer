@@ -585,7 +585,7 @@ def main():
                     frames=np.array(rec_frames), wrist=np.array(rec_wrist),
                     contact=np.array([False] + contact), clearance=np.array([clear_rec0] + clear),
                     hits=np.array(json.dumps([[]] + rec_hits[1:])), eef_pos=np.array(eef),
-                    chunk_pred_clearance=np.array([c["pred_min_clearance"] if c["pred_min_clearance"] is not None else np.nan
+                    chunk_pred_clearance=np.array([c["pred_min_clearance"] if c.get("pred_min_clearance") is not None else np.nan
                                                    for c in chunk_logs]),
                 )
 
@@ -610,7 +610,7 @@ def main():
                 "arm_pred_err_cm": (100 * np.array(arm_pred).mean(axis=0)).round(3).tolist() if arm_pred else None,
                 "contact_detection": "substep",
                 "infer_ms_mean": float(np.mean(infer_ms)) if infer_ms else None,
-                "pred_min_clearance_mean": float(np.mean([c["pred_min_clearance"] for c in chunk_logs if c["pred_min_clearance"] is not None])) if chunk_logs else None,
+                "pred_min_clearance_mean": float(np.mean([c["pred_min_clearance"] for c in chunk_logs if c.get("pred_min_clearance") is not None])) if any(c.get("pred_min_clearance") is not None for c in chunk_logs) else None,
                 "contact_steps_per_pillar": pillar_hits,
                 "car_trained_chunks": sum(1 for c in chunk_logs if c.get("car_loss") is not None),
                 "car_gated_chunks": sum(1 for c in chunk_logs if (c.get("car_gate_steps") or 0) > 0),
