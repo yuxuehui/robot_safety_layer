@@ -14,6 +14,7 @@ import dataclasses
 import numpy as np
 
 from .cost import ActionMap, ChunkCostContext
+from .recovery import ManifoldIndex, RewindConfig, RewindRecovery
 
 
 @dataclasses.dataclass
@@ -37,6 +38,7 @@ class SupervisorConfig:
     escape_min_disp: float = 0.02
     escape_lift: float = 0.015  # m per control step
     escape_len: int = 2  # chunks per escape
+    rewind: RewindConfig | None = None  # state-level recovery (recovery.py); None = off
 
     @classmethod
     def pillar_sota(cls, **kw):
@@ -72,11 +74,19 @@ def build_ctx(robot, scene, action_map: ActionMap, cfg: SupervisorConfig, margin
 
 
 class Supervisor:
-    def __init__(self, robot, scene, action_map: ActionMap, cfg: SupervisorConfig | None = None, horizon=10):
+    def __init__(self, robot, scene, action_map: ActionMap, cfg: SupervisorConfig | None = None, horizon=10,
+                 manifold: ManifoldIndex | None = None):
         self.robot, self.scene, self.action_map = robot, scene, action_map
         self.cfg = cfg or SupervisorConfig()
         self.horizon = horizon
+        self.manifold = manifold
+        self.rec = RewindRecovery(self.cfg.rewind or RewindConfig(), manifold, getattr(action_map, "G", np.eye(3) * 0.012))
         self.reset()
+
+    def set_manifold(self, manifold: ManifoldIndex | None):
+        """Reference states of the policy's own obstacle-free rollouts for this task (OOD score + rewind targets)."""
+        self.manifold = manifold
+        self.rec.manifold = manifold
 
     def reset(self, gate_line=None):
         """gate_line: (c_xy, d_xy, offset) - the EEF is 'past the gate' when (p_xy - c) . d > offset (+ hysteresis)."""
@@ -86,6 +96,8 @@ class Supervisor:
         self.escape_left, self.escape_events, self.escape_off = 0, 0, None
         self.held_log = []
         self._p_now = None
+        self.rewind_actions = None  # raw actions to execute instead of calling the policy (set by before_chunk)
+        self.rec.reset()
 
     def before_chunk(self, gripper_closed: bool) -> ChunkCostContext:
         cfg = self.cfg
@@ -109,8 +121,36 @@ class Supervisor:
         held = self.robot.held_object(gripper_closed) if cfg.model_object else None
         self.held_log.append(held)
         self._p_now = p_now
+        # state-level recovery: OOD score of this chunk start; rewind when the policy dithers out of distribution
+        self.rec.score(p_now, gripper_closed)
+        self.rewind_actions = None
+        self._pending = (p_now, gripper_closed, held)
+        if cfg.rewind is not None and self.manifold is not None:
+            if self.rec.cooldown > 0:
+                self.rec.cooldown -= 1
+            elif self.rec.events < cfg.rewind.max_events and self.rec.dithering(p_now):
+                tgt = self.rec.target(gripper_closed, held)
+                if tgt is not None:
+                    acts = self.rec.plan(tgt, gripper_closed)
+                    if acts:
+                        self.rewind_actions = acts
+                        self.escape_off, self.escape_left = None, 0
         return build_ctx(self.robot, self.scene, self.action_map, cfg, margin_arm=margin_arm_eff, held=held,
                          horizon=self.horizon)
+
+    def note_step(self, p_ee, gripper_closed: bool):
+        """Call once per executed control step with the EEF position measured BEFORE the action (rewind path)."""
+        self.rec.note_step(p_ee, gripper_closed)
+
+    def after_rewind(self):
+        """Bookkeeping after a rewind chunk was handed to the controller: the dithering window starts afresh."""
+        p, g, held = self._pending
+        self.rec.record_chunk(p, g, held, guided=False)
+        self.hist = []
+
+    @property
+    def last_ood(self):
+        return self.rec.last_ood
 
     def _deadlocked(self, p_now):
         """Guidance active on all of the last escape_chunks chunks and the end effector moved less than escape_min_disp."""
@@ -123,6 +163,8 @@ class Supervisor:
         """Record whether guidance was active on the chunk just sampled (from Guide.last_log)."""
         guided = ((last_log.get("cost_per_step") or [0])[0] or 0) > 0
         self.hist.append((self._p_now, guided))
+        p, g, held = self._pending
+        self.rec.record_chunk(p, g, held, guided=guided)
 
     @property
     def held(self):

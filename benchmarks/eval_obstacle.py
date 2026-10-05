@@ -192,6 +192,15 @@ def main():
     ap.add_argument("--escape_min_disp", type=float, default=0.02)
     ap.add_argument("--escape_lift", type=float, default=0.015, help="m per control step of upward offset during an escape")
     ap.add_argument("--escape_len", type=int, default=2, help="chunks per escape")
+    ap.add_argument("--rewind", type=int, default=0, help="1: state-level recovery - rewind to the last in-distribution state when the policy dithers after a detour")
+    ap.add_argument("--rewind_thr", type=float, default=0.06, help="m: nearest-neighbour distance to the baseline rollouts above which a state is OOD")
+    ap.add_argument("--rewind_window", type=int, default=6)
+    ap.add_argument("--rewind_net", type=float, default=0.08)
+    ap.add_argument("--rewind_ratio", type=float, default=2.0)
+    ap.add_argument("--rewind_quiet", type=int, default=2)
+    ap.add_argument("--rewind_max", type=int, default=2)
+    ap.add_argument("--rewind_step", type=float, default=0.012)
+    ap.add_argument("--rewind_cooldown", type=int, default=6)
     ap.add_argument("--margin_obj", type=float, default=None, help="CBF/hinge margin for held-object spheres (default: margin_grip)")
     # guidance
     ap.add_argument("--guidance", default="none", choices=["none", "g1", "bestofn", "project", "oc", "car", "mppi"])
@@ -319,7 +328,10 @@ def main():
         cbf_gamma=args.cbf_gamma, cbf_vref=args.cbf_vref, include_arm=(args.robot_model == "gripper+arm"),
         arm_motion=args.arm_motion, model_object=bool(args.model_object), arm_release=bool(args.arm_release),
         arm_margin_post=args.arm_margin_post, release_hyst=args.release_hyst, escape_chunks=args.escape_chunks,
-        escape_min_disp=args.escape_min_disp, escape_lift=args.escape_lift, escape_len=args.escape_len)
+        escape_min_disp=args.escape_min_disp, escape_lift=args.escape_lift, escape_len=args.escape_len,
+        rewind=(sg.core.recovery.RewindConfig(window=args.rewind_window, net_thr=args.rewind_net, ratio=args.rewind_ratio,
+                                              quiet=args.rewind_quiet, ood_thr=args.rewind_thr, max_events=args.rewind_max,
+                                              step=args.rewind_step, cooldown=args.rewind_cooldown) if args.rewind else None))
     json.dump({**vars(args), "G": np.asarray(G).tolist()}, open(out / "args.json", "w"), indent=1)
     print("action->EEF gain G:", np.asarray(G).round(4).tolist(), "| robot model:", args.robot_model, flush=True)
 
@@ -341,6 +353,10 @@ def main():
 
     for task_id in tasks_in_order:
         task = suite.get_task(task_id)
+        # the policy's own obstacle-free rollouts of this task define "in distribution" (OOD score + rewind targets)
+        manifold = sg.core.recovery.ManifoldIndex.from_baseline(args.baseline_dir, args.suite, task_id)
+        if manifold is None:
+            print(f"task {task_id}: no baseline trajectories under {args.baseline_dir} - OOD score / rewind off", flush=True)
         init_states = suite.get_task_init_states(task_id)
         env = make_env(task, args.seed)
         hand_mode = args.layout == "hand"
@@ -464,7 +480,7 @@ def main():
             robot = sg.MujocoPandaRobot(env)
             scene = (hd.HandCapsuleScene(hm, hand_spec, args.hand_predict, args.margin_hand, args.hand_margin_tau)
                      if hand_mode else ob.PillarScene(env))
-            sup = sg.Supervisor(robot, scene, adapter.action_map(), sup_cfg, horizon=adapter.action_horizon)
+            sup = sg.Supervisor(robot, scene, adapter.action_map(), sup_cfg, horizon=adapter.action_horizon, manifold=manifold)
             sup.reset(None if gate_c is None else (gate_c, gate_d, gate_off))
 
             chunk_logs, infer_ms = [], []
@@ -497,33 +513,44 @@ def main():
                                            if np.linalg.norm(o - ob.eef_pos(env)[:2]) > 0.08])
                     sampler.ctx, sampler.escape_off = ctx, sup.escape_off
                     held = sup.held
-                    if args.log_arm_pred:
-                        ap_, _, aa_, _ = ob.arm_points(env, return_bodies=True)
-                        pend_ = {"p0": ob.eef_pos(env), "arm0": ap_, "alpha": aa_, "M": ob.arm_motion_matrices(env), "t": t}
-                    t0 = time.perf_counter()
-                    if args.policy == "groot":
-                        chunk = sg.remote.libero_action(sampler.infer(sg.remote.groot_obs(obs, str(task.language)))["actions"])
-                        lg = sampler.last_log
+                    if sup.rewind_actions is not None:  # state-level recovery: retrace the path, no policy call
+                        racts = sup.rewind_actions
+                        chunk_logs.append({"rewind": True, "rewind_steps": len(racts), "rewind_to_step": sup.rec.last_target_step,
+                                           "ood_cm": None if sup.last_ood is None else 100 * sup.last_ood, "post_gate": sup.post_gate,
+                                           "escape": False, "held_obj": held, "cost_first": None, "intent_cm": None})
+                        plan.extend(racts)
+                        sup.after_rewind()
+                        print(f"  rewind #{sup.rec.events}: {len(racts)} steps back to step {sup.rec.last_target_step}", flush=True)
                     else:
-                        chunk = policy.infer(element)["actions"]
-                        lg = sampler.last_log
-                    infer_ms.append((time.perf_counter() - t0) * 1e3)
-                    sup.after_chunk(lg)
-                    chunk_logs.append({"post_gate": sup.post_gate, "escape": sampler.escape_off is not None}
-                                      | {k: lg.get(k) for k in ("cost_final", "pred_min_clearance", "sample_ms",
-                                                              "oc_cost0", "oc_iters_used", "oc_best_cost", "oc_u_rms",
-                                                              "car_active_ratio", "car_loss", "car_gate_max", "car_gate_steps", "oc_best_it",
-                                                              "h_star", "viol_exec_cm", "viol_tail_cm", "bind_group", "bind_h",
-                                                              "c0_bind_cm", "push_cm", "intent_cm", "brake_frac",
-                                                              "steer_brake_steps", "latches", "latch_sides",
-                                                              "car_ess", "car_lat_spread_cm", "car_gate_frac", "car_resid_ratio",
-                                                              "guided_first")}
-                                      | {k: v for k, v in lg.items() if k.startswith("mppi_") or k.startswith("car_vec")}
-                                      | {"cost_first": (lg.get("cost_per_step") or [None])[0], "held_obj": held,
-                                         "n_obj_spheres": int(sum(g == "obj" for g in (sampler.ctx.sphere_groups or [])))})
-                    plan.extend(chunk[: args.replan_steps])
+                        if args.log_arm_pred:
+                            ap_, _, aa_, _ = ob.arm_points(env, return_bodies=True)
+                            pend_ = {"p0": ob.eef_pos(env), "arm0": ap_, "alpha": aa_, "M": ob.arm_motion_matrices(env), "t": t}
+                        t0 = time.perf_counter()
+                        if args.policy == "groot":
+                            chunk = sg.remote.libero_action(sampler.infer(sg.remote.groot_obs(obs, str(task.language)))["actions"])
+                            lg = sampler.last_log
+                        else:
+                            chunk = policy.infer(element)["actions"]
+                            lg = sampler.last_log
+                        infer_ms.append((time.perf_counter() - t0) * 1e3)
+                        sup.after_chunk(lg)
+                        chunk_logs.append({"post_gate": sup.post_gate, "escape": sampler.escape_off is not None}
+                                          | {k: lg.get(k) for k in ("cost_final", "pred_min_clearance", "sample_ms",
+                                                                  "oc_cost0", "oc_iters_used", "oc_best_cost", "oc_u_rms",
+                                                                  "car_active_ratio", "car_loss", "car_gate_max", "car_gate_steps", "oc_best_it",
+                                                                  "h_star", "viol_exec_cm", "viol_tail_cm", "bind_group", "bind_h",
+                                                                  "c0_bind_cm", "push_cm", "intent_cm", "brake_frac",
+                                                                  "steer_brake_steps", "latches", "latch_sides",
+                                                                  "car_ess", "car_lat_spread_cm", "car_gate_frac", "car_resid_ratio",
+                                                                  "guided_first")}
+                                          | {k: v for k, v in lg.items() if k.startswith("mppi_") or k.startswith("car_vec")}
+                                          | {"cost_first": (lg.get("cost_per_step") or [None])[0], "held_obj": held,
+                                             "ood_cm": None if sup.last_ood is None else 100 * sup.last_ood,
+                                             "n_obj_spheres": int(sum(g == "obj" for g in (sampler.ctx.sphere_groups or [])))})
+                        plan.extend(chunk[: args.replan_steps])
                 action = np.asarray(plan.popleft())
                 eef.append(ob.eef_pos(env)); acts.append(action.copy())
+                sup.note_step(eef[-1], bool(action[6] > 0))
                 if hand_mode:  # kinematic hand: pose for this control step, set before the physics substeps
                     h_el, h_tip = hm.update(ob.eef_pos(env), t - args.num_steps_wait, gripper_closed=bool(action[6] > 0))
                     hd.set_hand_pose(env, h_el, h_tip); hand_tips.append(h_tip)
@@ -576,6 +603,9 @@ def main():
                 "held_chunks": int(sum(h is not None for h in sup.held_log)), "held_objects": sorted({h for h in sup.held_log if h}),
                 "collided_object_only": bool(hit_names) and not robot_hit,
                 "post_gate_chunks": sup.post_gate_chunks, "escape_events": sup.escape_events,
+                "rewind_events": sup.rec.events, "rewind_steps": sup.rec.steps_total,
+                "ood_cm_max": max((c["ood_cm"] for c in chunk_logs if c.get("ood_cm") is not None), default=None),
+                "ood_chunks": sum(1 for c in chunk_logs if (c.get("ood_cm") or 0) > 100 * args.rewind_thr),
                 "hand": hm.info() if hand_mode else None,
                 "arm_pred_err_cm": (100 * np.array(arm_pred).mean(axis=0)).round(3).tolist() if arm_pred else None,
                 "contact_detection": "substep",
